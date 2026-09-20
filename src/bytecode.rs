@@ -26,8 +26,9 @@ pub enum Op {
     Gt,
     Ge,
     Jump,
+    /// peek 条件不弹栈；为假则跳转。分支/`&&` 两条路径都要自己 `Pop` 条件。
     JumpIfFalse,
-    /// pop condition, jump if true (for `||` short-circuit keeps true)
+    /// peek 条件不弹栈；为真则跳转。`||` 短路时栈上保留 `true` 作为结果。
     JumpIfTrue,
     Loop,
     Call,

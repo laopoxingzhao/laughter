@@ -129,8 +129,7 @@ impl<'a> Checker<'a> {
                 .insert(p.name.name.clone(), ty);
         }
         self.check_block(&f.body)?;
-        // ensure non-void functions end with return on all paths — light check:
-        // only if body is empty or last stmt is not return/if-returns, warn as error
+        // 非 void：要求「必达 return」的保守分析（含 if/else 两支都返回；不把 while true 视作返回）。
         if !matches!(self.current_ret, Type::Void) && !block_always_returns(&f.body) {
             return Err(CheckError {
                 message: format!(

@@ -118,7 +118,7 @@ impl<'m> Vm<'m> {
     }
 
     fn run_loop(&mut self, output: &mut Vec<String>) -> Result<Vec<String>, VmError> {
-        // transfer ownership of output at end — use &mut throughout instead
+        // 打印内容写入 output；帧清空时用 take 取走所有权并返回。
         loop {
             if self.frames.is_empty() {
                 return Ok(std::mem::take(output));
