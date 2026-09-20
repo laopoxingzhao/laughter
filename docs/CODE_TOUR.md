@@ -34,6 +34,14 @@ cargo run -- disasm examples/hello.lg
 cargo run -- disasm examples/zca.lg
 ```
 
+也可以把字节码**存成文件**再执行（格式见 [BYTECODE.md](BYTECODE.md)）：
+
+```bash
+cargo run -- compile examples/fib.lg   # 生成 .lgb
+cargo run -- exec examples/fib.lgb
+cargo run -- disasm examples/fib.lgb
+```
+
 `hello.lg` 里只有顶层 `print("hello, laughter");`，反汇编大致是：
 
 ```text

@@ -20,14 +20,19 @@ cargo test
 ```bash
 cargo run -- run examples/hello.lg
 cargo run -- check tests/fixtures/type_error.lg
+cargo run -- compile examples/fib.lg          # 生成 examples/fib.lgb
+cargo run -- exec examples/fib.lgb
 cargo run -- disasm examples/zca.lg
+cargo run -- disasm examples/fib.lgb
 ```
 
 | 子命令 | 行为 |
 |--------|------|
-| `run <file.lg>` | 类型检查 → 编译 → 执行 |
+| `run <file.lg>` | 类型检查 → 编译 → 执行源码 |
 | `check <file.lg>` | 类型检查 → 编译，不执行 |
-| `disasm <file.lg>` | 打印字节码反汇编与常量表 |
+| `compile <file.lg> [-o out.lgb]` | 编译并**写入字节码文件** `.lgb` |
+| `exec <file.lgb>` | 执行字节码文件 |
+| `disasm <file.lg\|file.lgb>` | 打印字节码反汇编与常量表 |
 
 ## 第一个程序
 

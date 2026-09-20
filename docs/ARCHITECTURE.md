@@ -7,10 +7,12 @@
   → syntax::lexer     Token 流（带行列）
   → syntax::parser    AST
   → sema::check       作用域 / 类型 / const 折叠
-  → codegen::compile  栈式字节码 Chunk
+  → codegen::compile  栈式字节码 Chunk → Module（内存）
+  → codegen::lgb      （可选）Module ↔ .lgb 磁盘文件
   → runtime::vm       执行 → print 输出或运行时错误
 
 module_loader：解析 import，合并顶层声明后再走上述管线
+CLI: run/check/disasm 可读源码；compile/exec 使用 .lgb
 ```
 
 多文件时：`import` 在 loader 阶段展开为**单一 Program**（只合声明，不执行目标文件顶层语句），再检查与编译。
@@ -36,6 +38,7 @@ src/
     op.rs             操作码
     chunk.rs          Chunk / Function / Module / 反汇编
     compile.rs        AST → 字节码
+    lgb.rs            .lgb 文件编解码（compile/exec）
   runtime/
     mod.rs
     value.rs          Value（含值语义 StructVal）

@@ -4,6 +4,7 @@
 .idea/
 .vscode/
 *.pdb
+*.lgb
 
 
 # Added by cargo

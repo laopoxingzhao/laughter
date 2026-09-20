@@ -5,17 +5,19 @@
 //! .lg 文件
 //!   → syntax：词法 + 语法 → AST
 //!   → sema：类型检查 + const 折叠
-//!   → codegen：AST → 字节码
+//!   → codegen：AST → 字节码（内存 Module）
+//!   → 可选：codegen::lgb 写入 .lgb 文件
 //!   → runtime：栈机执行 → 打印结果
 //! ```
 //!
-//! **你应该从哪读起**
-//! 1. 文档：`docs/CODE_TOUR.md`（小白导读）→ `docs/LANGUAGE.md`（语言规则）
-//! 2. 代码：`src/syntax/lexer.rs` → `parser.rs` → `sema/check.rs` → `codegen/compile.rs` → `runtime/vm.rs`
+//! **建议阅读**
+//! 1. `docs/CODE_TOUR.md` → `docs/LANGUAGE.md` → `docs/BYTECODE.md`
+//! 2. `src/syntax/` → `sema/` → `codegen/` → `runtime/`
 //!
 //! **常用 API**
-//! - `run_file` / `compile_file`：按路径（支持 import）——CLI 用这个
-//! - `run_source` / `compile_source`：单文件字符串（测试常用，无 import）
+//! - `run_file` / `compile_file`：源码路径（支持 import）
+//! - `codegen::lgb::{encode_module, decode_module, load_lgb}`：`.lgb` 文件
+//! - `run_source`：单文件字符串（测试用，无 import）
 
 pub mod codegen;
 pub mod module_loader;

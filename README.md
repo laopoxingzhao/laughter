@@ -8,6 +8,7 @@
 | 快速开始 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) |
 | 代码导读（小白向） | [`docs/CODE_TOUR.md`](docs/CODE_TOUR.md) |
 | 类型英文对照 | [`docs/TYPES_GLOSSARY.md`](docs/TYPES_GLOSSARY.md) |
+| 字节码文件 .lgb | [`docs/BYTECODE.md`](docs/BYTECODE.md) |
 | 架构 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 文档索引 | [`docs/README.md`](docs/README.md) |
 | 源文件后缀 | `.lg` |
@@ -20,7 +21,8 @@
 ```bash
 cargo test
 cargo run -- run examples/hello.lg
-cargo run -- run examples/fib.lg
+cargo run -- compile examples/fib.lg   # 生成 .lgb 字节码
+cargo run -- exec examples/fib.lgb
 cargo run -- disasm examples/zca.lg
 ```
 

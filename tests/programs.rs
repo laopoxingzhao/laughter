@@ -135,3 +135,29 @@ fn methods_and_arrays_field() {
         "#);
     assert_eq!(out, vec!["7"]);
 }
+
+#[test]
+fn compile_exec_roundtrip() {
+    use laughter::codegen::lgb::{decode_module, encode_module, exec_module};
+    let module = laughter::module_loader::compile_file("examples/fib.lg").unwrap();
+    let bytes = encode_module(&module).unwrap();
+    assert!(bytes.starts_with(b"LGB1"));
+    let loaded = decode_module(&bytes).unwrap();
+    let out = exec_module(&loaded).unwrap();
+    assert_eq!(out, vec!["55"]);
+}
+
+#[test]
+fn lgb_file_on_disk() {
+    use laughter::codegen::lgb::{encode_module, exec_module, load_lgb, write_lgb};
+    use std::path::PathBuf;
+    let module = laughter::module_loader::compile_file("examples/zca.lg").unwrap();
+    let bytes = encode_module(&module).unwrap();
+    let path = PathBuf::from("target/zca_test.lgb");
+    std::fs::create_dir_all("target").ok();
+    write_lgb(&path, &bytes).unwrap();
+    let loaded = load_lgb(&path).unwrap();
+    let out = exec_module(&loaded).unwrap();
+    assert_eq!(out, vec!["21", "zca", "1", "50", "103", "1", "25"]);
+    let _ = std::fs::remove_file(&path);
+}
