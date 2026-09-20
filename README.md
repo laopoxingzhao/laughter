@@ -9,7 +9,7 @@
 | 仓库 | https://github.com/laopoxingzhao/laughter |
 | 许可证 | [MIT](LICENSE) |
 | CI | GitHub Actions：`cargo fmt --check` + `cargo test` |
-| 设计文档 | [`laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md)、[`lang-next.md`](docs/compose/spec/lang-next.md) |
+| 设计文档 | [`laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md)、[`lang-next.md`](docs/compose/spec/lang-next.md)、[`zca-structs-const.md`](docs/compose/spec/zca-structs-const.md) |
 
 ## 构建与测试
 
@@ -79,6 +79,7 @@ fun main() -> void {
 | `examples/strings.lg` | 字符串 API |
 | `examples/forin.lg` | `push`/`pop`/`for-in` |
 | `examples/methods_range.lg` | 结构体方法、`for i in 0..n`、`break`/`continue` |
+| `examples/zca.lg` | 值语义结构体 + `const` 折叠 |
 | `examples/mod_main.lg` + `mod_math.lg` | 多文件 `import` |
 | `tests/fixtures/type_error.lg` | 应被拒绝的类型错误样例 |
 
@@ -96,6 +97,21 @@ fun main() -> void {
 | `src/bytecode.rs` / `compiler.rs` | 操作码、Chunk、AST→字节码 |
 | `src/value.rs` / `vm.rs` | 运行时值、栈式 VM、`run_source` |
 | `src/lib.rs` / `src/bin/laughter.rs` | 库入口与 CLI |
+
+## 零成本抽象（当前约定）
+
+目标是让常用抽象**接近手写栈机指令**的成本，而不是运行时包装：
+
+| 机制 | 成本约定 |
+|------|----------|
+| `const` | 初始化式在编译期求值；使用处是 `CONST 字面量`，无局部槽、无运行时运算 |
+| 结构体 | `Value::Struct` 直接在栈/槽中；`let b = a` 为字段拷贝，**无 `Rc` 堆分配** |
+| 字段写 `p.x = v` | `SetLocalField` 改栈槽内字段，不分配、不影响其它拷贝 |
+| 方法 `p.m()` | 编译为直接 `Call`/`CallMethod`（按类型名查表），无虚表 |
+| `for i in a..b` | 脱糖为下标 `while`，无迭代器对象 |
+| `string` / 数组字段 | 仍是指针语义（`Rc` 句柄浅拷贝共享）——见 `docs/compose/spec/zca-structs-const.md` |
+
+用 `laughter disasm examples/zca.lg` 可看到 `CONST 21` 等折叠结果。
 
 ## 本期不做
 

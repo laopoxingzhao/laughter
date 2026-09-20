@@ -260,6 +260,7 @@ impl<'a> Lexer<'a> {
             "continue" => TokenKind::Continue,
             "import" => TokenKind::Import,
             "as" => TokenKind::As,
+            "const" => TokenKind::Const,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

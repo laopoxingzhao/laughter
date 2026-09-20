@@ -45,6 +45,8 @@ pub enum Op {
     NewStruct,
     GetField,
     SetField,
+    /// 弹出 value，写入 stack[slot] 结构体的字段（值语义，无分配）
+    SetLocalField,
     Push,
     ArrayPop,
     Input,
@@ -93,6 +95,7 @@ impl fmt::Display for Op {
             Op::NewStruct => "NEW_STRUCT",
             Op::GetField => "GET_FIELD",
             Op::SetField => "SET_FIELD",
+            Op::SetLocalField => "SET_LOCAL_FIELD",
             Op::Push => "PUSH",
             Op::ArrayPop => "ARRAY_POP",
             Op::Input => "INPUT",
@@ -215,7 +218,8 @@ impl Chunk {
                 | Op::Call
                 | Op::NewArray
                 | Op::GetField
-                | Op::SetField => {
+                | Op::SetField
+                | Op::SetLocalField => {
                     if i + 2 < self.code.len() {
                         let arg = u16::from_le_bytes([self.code[i + 1], self.code[i + 2]]);
                         if op == Op::Const {
@@ -316,6 +320,7 @@ pub fn op_from_u8(b: u8) -> Option<Op> {
         x if x == Op::NewStruct as u8 => Op::NewStruct,
         x if x == Op::GetField as u8 => Op::GetField,
         x if x == Op::SetField as u8 => Op::SetField,
+        x if x == Op::SetLocalField as u8 => Op::SetLocalField,
         x if x == Op::Push as u8 => Op::Push,
         x if x == Op::ArrayPop as u8 => Op::ArrayPop,
         x if x == Op::Input as u8 => Op::Input,

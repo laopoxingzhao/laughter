@@ -29,11 +29,35 @@ impl Parser {
                 items.push(Item::Struct(self.struct_decl()?));
             } else if self.check(&TokenKind::Import) {
                 items.push(Item::Import(self.import_item()?));
+            } else if self.check(&TokenKind::Const) {
+                items.push(Item::Const(self.const_decl()?));
             } else {
                 items.push(Item::Stmt(self.stmt()?));
             }
         }
         Ok(Program { items })
+    }
+
+    fn const_decl(&mut self) -> Result<ConstDecl, ParseError> {
+        let start = self.expect(TokenKind::Const, "`const`")?.span;
+        let name = self.expect_ident()?;
+        self.expect(TokenKind::Colon, "`:` after const name")?;
+        let ty = self.ty()?;
+        if ty.is_void() {
+            return Err(ParseError {
+                message: "const type cannot be `void`".into(),
+                span: name.span,
+            });
+        }
+        self.expect(TokenKind::Assign, "`=` in const")?;
+        let value = self.expr()?;
+        self.expect(TokenKind::Semi, "`;` after const")?;
+        Ok(ConstDecl {
+            name,
+            ty,
+            value,
+            span: start,
+        })
     }
 
     fn import_item(&mut self) -> Result<ImportItem, ParseError> {
@@ -304,14 +328,19 @@ impl Parser {
                 self.advance();
                 let index = self.expr()?;
                 self.expect(TokenKind::RBracket, "`]` after index")?;
+                let mut fields = Vec::new();
+                while self.check(&TokenKind::Dot) {
+                    self.advance();
+                    fields.push(self.expect_ident()?);
+                }
                 if self.check(&TokenKind::Assign) {
                     self.advance();
                     let value = self.expr()?;
-                    let semi = self.expect(TokenKind::Semi, "`;` after index assignment")?;
+                    let semi = self.expect(TokenKind::Semi, "`;` after assignment")?;
                     return Ok(Stmt::Assign(AssignStmt {
                         name,
                         index: Some(index),
-                        fields: Vec::new(),
+                        fields,
                         value,
                         span: semi.span,
                     }));

@@ -318,3 +318,103 @@ fn break_outside_loop_rejected() {
     let err = run_source("fun main() -> void { break; }").unwrap_err();
     assert!(err.contains("break") || err.contains("error"), "{err}");
 }
+
+#[test]
+fn zca_example() {
+    let out = run_source(include_str!("../examples/zca.lg")).unwrap();
+    assert_eq!(out, vec!["21", "zca", "1", "50", "103", "1", "25"]);
+}
+
+#[test]
+fn const_folds_to_literal() {
+    let out = run_source(
+        r#"
+        const N: int = 10;
+        const M: int = N * 2 + 1;
+        fun main() -> void { print(M); }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["21"]);
+}
+
+#[test]
+fn const_assign_rejected() {
+    let err = run_source("const N: int = 1;\nfun main() -> void { N = 2; }").unwrap_err();
+    assert!(err.contains("const") || err.contains("error"), "{err}");
+}
+
+#[test]
+fn const_non_const_expr_rejected() {
+    let err = run_source("fun f() -> int { return 1; }\nconst N: int = f();");
+    assert!(err.is_err());
+}
+
+#[test]
+fn struct_value_copy_semantics() {
+    let out = run_source(
+        r#"
+        struct P { x: int }
+        fun main() -> void {
+            let a = P { x: 1 };
+            let b = a;
+            b.x = 9;
+            print(a.x);
+            print(b.x);
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["1", "9"]);
+}
+
+#[test]
+fn method_receiver_is_copy() {
+    let out = run_source(
+        r#"
+        struct P { x: int }
+        fun P.bump(self: P) -> int {
+            self.x = self.x + 1;
+            return self.x;
+        }
+        fun main() -> void {
+            let p = P { x: 10 };
+            print(p.bump());
+            print(p.x);
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["11", "10"]);
+}
+
+#[test]
+fn array_element_field_writeback() {
+    let out = run_source(
+        r#"
+        struct P { x: int }
+        fun main() -> void {
+            let a: P[] = [P { x: 1 }];
+            a[0].x = 7;
+            print(a[0].x);
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["7"]);
+}
+
+#[test]
+fn const_in_disasm_is_literal() {
+    let module =
+        laughter::vm::compile_source("const M: int = 10 * 2;\nfun main() -> void { print(M); }")
+            .unwrap();
+    let main = module
+        .functions
+        .iter()
+        .find(|f| f.name == "main")
+        .expect("main");
+    let text = main.chunk.disassemble("main");
+    assert!(text.contains("CONST"), "{text}");
+    assert!(text.contains("(20)"), "expected folded 20 in {text}");
+}

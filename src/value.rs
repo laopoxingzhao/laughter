@@ -1,12 +1,14 @@
 //! 运行时值：VM 栈上的数据。
-//! 数组与结构体用 `Rc<RefCell<...>>` 句柄共享（引用语义），便于教学实现且无需 GC。
+//!
+//! 结构体为**值语义**：`Value::Struct(StructVal)` 直接内嵌，赋值/传参按字段拷贝。
+//! 若字段是 `string` / 数组，则该字段仍是指针语义（浅拷贝共享句柄）。
+//! 数组本身仍是 `Rc<RefCell<Vec<Value>>>` 句柄（引用语义）。
 
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
 pub type ArrayHandle = Rc<RefCell<Vec<Value>>>;
-pub type StructHandle = Rc<RefCell<StructVal>>;
 
 #[derive(Debug, Clone)]
 pub struct StructVal {
@@ -36,7 +38,8 @@ pub enum Value {
     Bool(bool),
     Str(Rc<str>),
     Array(ArrayHandle),
-    Struct(StructHandle),
+    /// 值语义结构体（非句柄）
+    Struct(StructVal),
 }
 
 impl Value {
@@ -47,11 +50,7 @@ impl Value {
             Value::Bool(_) => "bool",
             Value::Str(_) => "string",
             Value::Array(_) => "array",
-            Value::Struct(s) => {
-                // 返回静态名有困难，用占位
-                let _ = s;
-                "struct"
-            }
+            Value::Struct(_) => "struct",
         }
     }
 
@@ -72,7 +71,6 @@ impl Value {
                 format!("[{}]", items.join(", "))
             }
             Value::Struct(s) => {
-                let s = s.borrow();
                 let items: Vec<String> = s
                     .fields
                     .iter()

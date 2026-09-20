@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::ast::*;
 use crate::token::Span;
 use crate::types::Type;
+use crate::value::Value;
 
 #[derive(Debug)]
 pub struct CheckError {
@@ -35,6 +36,8 @@ pub struct Checker<'a> {
     functions: HashMap<String, FunInfo>,
     methods: HashMap<String, HashMap<String, FunInfo>>,
     structs: HashMap<String, Vec<(String, Type)>>,
+    /// 顶层 const：名 → (类型, 折叠后的值)
+    consts: HashMap<String, (Type, Value)>,
     scopes: Vec<HashMap<String, Type>>,
     current_ret: Type,
     loop_depth: u32,
@@ -48,6 +51,7 @@ impl<'a> Checker<'a> {
             functions: HashMap::new(),
             methods: HashMap::new(),
             structs: HashMap::new(),
+            consts: HashMap::new(),
             scopes: vec![HashMap::new()],
             current_ret: Type::Void,
             loop_depth: 0,
@@ -55,12 +59,20 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn check(mut self) -> Result<(), CheckError> {
+    /// 折叠后的顶层常量（供编译器直接 emit）
+    pub fn const_values(&self) -> &HashMap<String, (Type, Value)> {
+        &self.consts
+    }
+
+    pub fn check(mut self) -> Result<HashMap<String, Value>, CheckError> {
         for s in self.program.structs() {
             self.declare_struct(s)?;
         }
         for f in self.program.functions() {
             self.declare_function(f)?;
+        }
+        for c in self.program.consts() {
+            self.declare_const(c)?;
         }
         for f in self.program.functions() {
             self.check_function(f)?;
@@ -72,11 +84,82 @@ impl<'a> Checker<'a> {
         for stmt in self.program.top_level_stmts() {
             self.check_stmt(stmt)?;
         }
-        Ok(())
+        Ok(self.consts.into_iter().map(|(k, (_t, v))| (k, v)).collect())
     }
 
     fn ty(&self, t: &TypeExpr, span: Span) -> Result<Type, CheckError> {
         Type::from_ast(t, &self.structs).map_err(|m| CheckError { message: m, span })
+    }
+
+    fn declare_const(&mut self, c: &ConstDecl) -> Result<(), CheckError> {
+        if BUILTINS.contains(&c.name.name.as_str())
+            || self.functions.contains_key(&c.name.name)
+            || self.structs.contains_key(&c.name.name)
+            || self.consts.contains_key(&c.name.name)
+        {
+            return Err(CheckError {
+                message: format!("`{}` is already defined", c.name.name),
+                span: c.name.span,
+            });
+        }
+        let declared = self.ty(&c.ty, c.name.span)?;
+        let (val_ty, val) = self.fold_const_expr(&c.value)?;
+        if val_ty != declared {
+            return Err(CheckError {
+                message: format!(
+                    "const `{}` declared as `{declared}` but value is `{val_ty}`",
+                    c.name.name
+                ),
+                span: c.span,
+            });
+        }
+        self.consts.insert(c.name.name.clone(), (declared, val));
+        Ok(())
+    }
+
+    fn fold_const_expr(&self, e: &Expr) -> Result<(Type, Value), CheckError> {
+        match e {
+            Expr::Int { value, .. } => Ok((Type::Int, Value::Int(*value))),
+            Expr::Float { value, .. } => Ok((Type::Float, Value::Float(*value))),
+            Expr::Bool { value, .. } => Ok((Type::Bool, Value::Bool(*value))),
+            Expr::Str { value, .. } => {
+                Ok((Type::Str, Value::Str(std::rc::Rc::from(value.as_str()))))
+            }
+            Expr::Var { name } => self
+                .consts
+                .get(&name.name)
+                .cloned()
+                .ok_or_else(|| CheckError {
+                    message: format!("`{}` is not a compile-time constant expression", name.name),
+                    span: name.span,
+                }),
+            Expr::Unary { op, expr, span } => {
+                let (t, v) = self.fold_const_expr(expr)?;
+                match (op, t, v) {
+                    (UnOp::Neg, Type::Int, Value::Int(n)) => Ok((Type::Int, Value::Int(-n))),
+                    (UnOp::Neg, Type::Float, Value::Float(n)) => {
+                        Ok((Type::Float, Value::Float(-n)))
+                    }
+                    (UnOp::Not, Type::Bool, Value::Bool(b)) => Ok((Type::Bool, Value::Bool(!b))),
+                    _ => Err(CheckError {
+                        message: "invalid unary op in const expression".into(),
+                        span: *span,
+                    }),
+                }
+            }
+            Expr::Binary { op, lhs, rhs, span } => {
+                let (lt, lv) = self.fold_const_expr(lhs)?;
+                let (rt, rv) = self.fold_const_expr(rhs)?;
+                fold_binary(*op, lt, lv, rt, rv).map_err(|m| CheckError {
+                    message: m,
+                    span: *span,
+                })
+            }
+            other => Err(CheckError {
+                message: "not a compile-time constant expression".into(),
+                span: other.span(),
+            }),
+        }
     }
 
     fn declare_struct(&mut self, s: &StructDecl) -> Result<(), CheckError> {
@@ -335,6 +418,12 @@ impl<'a> Checker<'a> {
                 self.declare_var(&l.name.name, declared, l.name.span)?;
             }
             Stmt::Assign(a) => {
+                if self.consts.contains_key(&a.name.name) {
+                    return Err(CheckError {
+                        message: format!("cannot assign to const `{}`", a.name.name),
+                        span: a.span,
+                    });
+                }
                 let mut cur = self.lookup_var(&a.name.name).ok_or_else(|| CheckError {
                     message: format!("undefined variable `{}`", a.name.name),
                     span: a.name.span,
@@ -503,10 +592,15 @@ impl<'a> Checker<'a> {
             Expr::Float { .. } => Ok(Type::Float),
             Expr::Bool { .. } => Ok(Type::Bool),
             Expr::Str { .. } => Ok(Type::Str),
-            Expr::Var { name } => self.lookup_var(&name.name).ok_or_else(|| CheckError {
-                message: format!("undefined variable `{}`", name.name),
-                span: name.span,
-            }),
+            Expr::Var { name } => {
+                if let Some((t, _)) = self.consts.get(&name.name) {
+                    return Ok(t.clone());
+                }
+                self.lookup_var(&name.name).ok_or_else(|| CheckError {
+                    message: format!("undefined variable `{}`", name.name),
+                    span: name.span,
+                })
+            }
             Expr::Range { start, end, span } => {
                 let s = self.check_expr(start)?;
                 let e = self.check_expr(end)?;
@@ -1016,6 +1110,67 @@ fn if_always_returns(i: &IfStmt) -> bool {
     }
 }
 
+fn fold_binary(
+    op: BinOp,
+    lt: Type,
+    lv: Value,
+    rt: Type,
+    rv: Value,
+) -> Result<(Type, Value), String> {
+    use crate::ast::BinOp::*;
+    match (op, &lv, &rv) {
+        (Add, Value::Int(a), Value::Int(b)) if lt == Type::Int && rt == Type::Int => {
+            Ok((Type::Int, Value::Int(a.wrapping_add(*b))))
+        }
+        (Sub, Value::Int(a), Value::Int(b)) if lt == Type::Int && rt == Type::Int => {
+            Ok((Type::Int, Value::Int(a.wrapping_sub(*b))))
+        }
+        (Mul, Value::Int(a), Value::Int(b)) if lt == Type::Int && rt == Type::Int => {
+            Ok((Type::Int, Value::Int(a.wrapping_mul(*b))))
+        }
+        (Div, Value::Int(a), Value::Int(b)) if lt == Type::Int && rt == Type::Int => {
+            if *b == 0 {
+                Err("division by zero in const".into())
+            } else {
+                Ok((Type::Int, Value::Int(a.wrapping_div(*b))))
+            }
+        }
+        (Rem, Value::Int(a), Value::Int(b)) if lt == Type::Int && rt == Type::Int => {
+            if *b == 0 {
+                Err("remainder by zero in const".into())
+            } else {
+                Ok((Type::Int, Value::Int(a.wrapping_rem(*b))))
+            }
+        }
+        (Add, Value::Float(a), Value::Float(b)) => Ok((Type::Float, Value::Float(a + b))),
+        (Sub, Value::Float(a), Value::Float(b)) => Ok((Type::Float, Value::Float(a - b))),
+        (Mul, Value::Float(a), Value::Float(b)) => Ok((Type::Float, Value::Float(a * b))),
+        (Div, Value::Float(a), Value::Float(b)) => {
+            if *b == 0.0 {
+                Err("division by zero in const".into())
+            } else {
+                Ok((Type::Float, Value::Float(a / b)))
+            }
+        }
+        (Add, Value::Str(a), Value::Str(b)) => {
+            let mut s = a.to_string();
+            s.push_str(b);
+            Ok((Type::Str, Value::Str(std::rc::Rc::from(s.as_str()))))
+        }
+        (Eq, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a == b))),
+        (Ne, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a != b))),
+        (Lt, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a < b))),
+        (Le, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a <= b))),
+        (Gt, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a > b))),
+        (Ge, Value::Int(a), Value::Int(b)) => Ok((Type::Bool, Value::Bool(a >= b))),
+        (And, Value::Bool(a), Value::Bool(b)) => Ok((Type::Bool, Value::Bool(*a && *b))),
+        (Or, Value::Bool(a), Value::Bool(b)) => Ok((Type::Bool, Value::Bool(*a || *b))),
+        (Eq, Value::Bool(a), Value::Bool(b)) => Ok((Type::Bool, Value::Bool(a == b))),
+        (Ne, Value::Bool(a), Value::Bool(b)) => Ok((Type::Bool, Value::Bool(a != b))),
+        _ => Err(format!("cannot apply const binary op to `{lt}` and `{rt}`")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1025,7 +1180,7 @@ mod tests {
     fn check(src: &str) -> Result<(), CheckError> {
         let toks = Lexer::new(src).tokenize().expect("lex");
         let prog = Parser::new(toks).parse_program().expect("parse");
-        Checker::new(&prog).check()
+        Checker::new(&prog).check().map(|_| ())
     }
 
     #[test]

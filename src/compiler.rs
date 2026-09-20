@@ -1,8 +1,8 @@
 //! 编译器：AST → 栈式字节码。
 //!
-//! 局部变量按声明顺序占用栈槽（函数参数在前）；`Call` 后接**函数索引**（不是 argc）。
-//! 控制流用 `Jump`/`JumpIfFalse`/`Loop` 相对偏移，编译时先占位再 `patch_jump`。
-//! `for x in arr` 脱糖为下标 `while`；结构体字面量按声明字段顺序求值后 `NewStruct`。
+//! 局部变量按声明顺序占用栈槽；`const` 折叠后直接 `CONST` 指令。
+//! 结构体为值语义：`p.x = v` → `SetLocalField`（改栈槽内字段，无堆分配）。
+//! `for`/方法/import 见 spec lang-next / zca-structs-const。
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -98,24 +98,27 @@ impl FnCompiler {
     }
 }
 
+struct LoopCtx {
+    breaks: Vec<usize>,
+    continues: Vec<usize>,
+}
+
 pub struct Compiler {
     function_index: HashMap<String, usize>,
     functions: Vec<FnCompiler>,
     void_fns: HashMap<String, ()>,
     struct_index: HashMap<String, usize>,
     struct_types: Vec<StructType>,
-    /// break/continue 回填
+    consts: HashMap<String, Value>,
     loops: Vec<LoopCtx>,
     current: usize,
 }
 
-struct LoopCtx {
-    breaks: Vec<usize>,
-    continues: Vec<usize>,
-}
-
 impl Compiler {
-    pub fn compile(program: &Program) -> Result<Module, CompileError> {
+    pub fn compile(
+        program: &Program,
+        consts: HashMap<String, Value>,
+    ) -> Result<Module, CompileError> {
         let mut seen = HashSet::new();
         for f in program.functions() {
             if !seen.insert(f.name.name.clone()) {
@@ -154,15 +157,13 @@ impl Compiler {
                 None => f.name.name.clone(),
             };
             function_index.insert(key.clone(), i);
-            let is_void = f.ret.is_void();
-            if is_void {
+            if f.ret.is_void() {
                 void_fns.insert(key, ());
             }
         }
         let toplevel_index = fn_decls.len();
         function_index.insert("$toplevel".to_string(), toplevel_index);
         void_fns.insert("$toplevel".to_string(), ());
-        // void 内建：print / push
         void_fns.insert("print".to_string(), ());
         void_fns.insert("push".to_string(), ());
 
@@ -186,6 +187,7 @@ impl Compiler {
             void_fns,
             struct_index,
             struct_types,
+            consts,
             loops: Vec::new(),
             current: 0,
         };
@@ -295,6 +297,9 @@ impl Compiler {
                     {
                         false
                     }
+                    Expr::MethodCall { method, .. } if self.is_void_call_target(&method.name) => {
+                        false
+                    }
                     _ => true,
                 };
                 self.compile_expr(&e.expr)?;
@@ -319,25 +324,28 @@ impl Compiler {
             let slot = self.fn_mut().resolve_local(&a.name.name).ok_or_else(|| {
                 CompileError::new(format!("undefined variable `{}`", a.name.name), a.name.span)
             })?;
-            self.chunk().emit_op(Op::GetLocal, line);
-            self.chunk().emit_u16(slot, line);
-            self.compile_expr(idx)?;
             if a.fields.is_empty() {
+                self.chunk().emit_op(Op::GetLocal, line);
+                self.chunk().emit_u16(slot, line);
+                self.compile_expr(idx)?;
                 self.compile_expr(&a.value)?;
                 self.chunk().emit_op(Op::SetIndex, line);
                 return Ok(());
             }
-            // a[i].f... = v
-            self.chunk().emit_op(Op::GetIndex, line);
-            for (i, field) in a.fields.iter().enumerate() {
-                if i + 1 < a.fields.len() {
-                    let cidx = self
-                        .chunk()
-                        .add_constant(Value::Str(Rc::from(field.name.as_str())))?;
-                    self.chunk().emit_op(Op::GetField, line);
-                    self.chunk().emit_u16(cidx, line);
-                }
+            if a.fields.len() > 1 {
+                return Err(CompileError::new(
+                    "multi-level field assign on array element: use a temporary",
+                    a.span,
+                ));
             }
+            // arr[i].f = v：栈上保留 [arr, i]，再压 struct 副本改字段后 SetIndex 写回
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(slot, line);
+            self.compile_expr(idx)?;
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(slot, line);
+            self.compile_expr(idx)?;
+            self.chunk().emit_op(Op::GetIndex, line);
             self.compile_expr(&a.value)?;
             let last = a.fields.last().unwrap();
             let cidx = self
@@ -345,30 +353,27 @@ impl Compiler {
                 .add_constant(Value::Str(Rc::from(last.name.as_str())))?;
             self.chunk().emit_op(Op::SetField, line);
             self.chunk().emit_u16(cidx, line);
+            self.chunk().emit_op(Op::SetIndex, line);
             return Ok(());
         }
 
         if !a.fields.is_empty() {
+            if a.fields.len() > 1 {
+                return Err(CompileError::new(
+                    "multi-level field assignment: use intermediate lets (value semantics)",
+                    a.span,
+                ));
+            }
             let slot = self.fn_mut().resolve_local(&a.name.name).ok_or_else(|| {
                 CompileError::new(format!("undefined variable `{}`", a.name.name), a.name.span)
             })?;
-            self.chunk().emit_op(Op::GetLocal, line);
-            self.chunk().emit_u16(slot, line);
-            for (i, field) in a.fields.iter().enumerate() {
-                if i + 1 < a.fields.len() {
-                    let cidx = self
-                        .chunk()
-                        .add_constant(Value::Str(Rc::from(field.name.as_str())))?;
-                    self.chunk().emit_op(Op::GetField, line);
-                    self.chunk().emit_u16(cidx, line);
-                }
-            }
             self.compile_expr(&a.value)?;
             let last = a.fields.last().unwrap();
             let cidx = self
                 .chunk()
                 .add_constant(Value::Str(Rc::from(last.name.as_str())))?;
-            self.chunk().emit_op(Op::SetField, line);
+            self.chunk().emit_op(Op::SetLocalField, line);
+            self.chunk().emit_u16(slot, line);
             self.chunk().emit_u16(cidx, line);
             return Ok(());
         }
@@ -386,13 +391,11 @@ impl Compiler {
     fn compile_if(&mut self, i: &IfStmt) -> Result<(), CompileError> {
         self.compile_expr(&i.cond)?;
         let line = i.span.line;
-        // JumpIfFalse 只 peek 条件不弹栈；两条路径都必须自己 Pop。
         let then_jump = self.chunk().emit_jump(Op::JumpIfFalse, line);
         self.chunk().emit_op(Op::Pop, line);
         self.compile_block(&i.then_block)?;
         match &i.else_branch {
             None => {
-                // true 路径须 Jump 越过 false 路径的 Pop，否则会误弹局部槽。
                 let end_jump = self.chunk().emit_jump(Op::Jump, line);
                 self.chunk().patch_jump(then_jump)?;
                 self.chunk().emit_op(Op::Pop, line);
@@ -423,7 +426,6 @@ impl Compiler {
         let exit = self.chunk().emit_jump(Op::JumpIfFalse, line);
         self.chunk().emit_op(Op::Pop, line);
         self.compile_block(&w.body)?;
-        // continue → 回到条件
         let cont = self.chunk().code.len();
         let ctx = self.loops.pop().unwrap();
         for j in ctx.continues {
@@ -439,7 +441,6 @@ impl Compiler {
         Ok(())
     }
 
-    /// for：数组 for-in 或 `a..b` 范围；支持 break/continue
     fn compile_for(&mut self, f: &ForStmt) -> Result<(), CompileError> {
         let line = f.span.line;
         if let Expr::Range { start, end, .. } = &f.iter {
@@ -470,7 +471,6 @@ impl Compiler {
             }
             self.fn_mut().end_scope(line);
 
-            // continue 目标：增量
             let inc = self.chunk().code.len();
             let ctx = self.loops.pop().unwrap();
             for j in ctx.continues {
@@ -494,7 +494,6 @@ impl Compiler {
             return Ok(());
         }
 
-        // 数组 for-in
         self.fn_mut().begin_scope();
         self.compile_expr(&f.iter)?;
         self.fn_mut().add_local("\0for_arr".into());
@@ -584,6 +583,10 @@ impl Compiler {
                 Ok(())
             }
             Expr::Var { name } => {
+                if let Some(v) = self.consts.get(&name.name).cloned() {
+                    self.chunk().emit_const(v, name.span.line)?;
+                    return Ok(());
+                }
                 let slot = self.fn_mut().resolve_local(&name.name).ok_or_else(|| {
                     CompileError::new(format!("undefined variable `{}`", name.name), name.span)
                 })?;
@@ -625,14 +628,10 @@ impl Compiler {
                 self.chunk().emit_u16(args.len() as u16, span.line);
                 Ok(())
             }
-            Expr::Range { start, end, span } => {
-                // 范围字面量仅应出现在 for；单独求值时编译为错误提示用空数组
-                let _ = (start, end);
-                Err(CompileError::new(
-                    "range `a..b` is only allowed in `for`",
-                    *span,
-                ))
-            }
+            Expr::Range { span, .. } => Err(CompileError::new(
+                "range `a..b` is only allowed in `for`",
+                *span,
+            )),
             Expr::Index { base, index, span } => {
                 self.compile_expr(base)?;
                 self.compile_expr(index)?;
@@ -749,45 +748,19 @@ impl Compiler {
                 self.chunk().emit_op(Op::Len, line);
                 return Ok(());
             }
-            "str_at" => {
+            "str_at" | "str_sub" | "to_string" | "push" | "pop" | "input" => {
                 for a in args {
                     self.compile_expr(a)?;
                 }
-                self.chunk().emit_op(Op::StrAt, line);
-                return Ok(());
-            }
-            "str_sub" => {
-                for a in args {
-                    self.compile_expr(a)?;
-                }
-                self.chunk().emit_op(Op::StrSub, line);
-                return Ok(());
-            }
-            "to_string" => {
-                if args.len() != 1 {
-                    return Err(CompileError::new("`to_string` takes 1 argument", span));
-                }
-                self.compile_expr(&args[0])?;
-                self.chunk().emit_op(Op::ToString, line);
-                return Ok(());
-            }
-            "push" => {
-                for a in args {
-                    self.compile_expr(a)?;
-                }
-                self.chunk().emit_op(Op::Push, line);
-                return Ok(());
-            }
-            "pop" => {
-                if args.len() != 1 {
-                    return Err(CompileError::new("`pop` takes 1 argument", span));
-                }
-                self.compile_expr(&args[0])?;
-                self.chunk().emit_op(Op::ArrayPop, line);
-                return Ok(());
-            }
-            "input" => {
-                self.chunk().emit_op(Op::Input, line);
+                let op = match name {
+                    "str_at" => Op::StrAt,
+                    "str_sub" => Op::StrSub,
+                    "to_string" => Op::ToString,
+                    "push" => Op::Push,
+                    "pop" => Op::ArrayPop,
+                    _ => Op::Input,
+                };
+                self.chunk().emit_op(op, line);
                 return Ok(());
             }
             _ => {}

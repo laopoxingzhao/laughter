@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::bytecode::{op_from_u8, Module, Op};
-use crate::value::{ArrayHandle, Value};
+use crate::value::{ArrayHandle, StructVal, Value};
 
 pub struct VmError {
     pub message: String,
@@ -398,11 +398,10 @@ impl<'m> Vm<'m> {
                     let items: Vec<Value> = self.stack.split_off(start);
                     let fields: Vec<(String, Value)> =
                         st.fields.iter().cloned().zip(items).collect();
-                    let handle = Rc::new(RefCell::new(crate::value::StructVal {
+                    self.stack.push(Value::Struct(StructVal {
                         name: st.name.clone(),
                         fields,
                     }));
-                    self.stack.push(Value::Struct(handle));
                     self.set_ip(ip + 5);
                 }
                 Op::GetField => {
@@ -417,19 +416,16 @@ impl<'m> Vm<'m> {
                         }
                     };
                     let obj = self.pop(line)?;
-                    let Value::Struct(h) = obj else {
+                    let Value::Struct(s) = obj else {
                         return Err(VmError {
                             message: format!("cannot get field on {}", obj.type_name()),
                             line,
                         });
                     };
-                    let v = {
-                        let b = h.borrow();
-                        b.get(&name).cloned().ok_or_else(|| VmError {
-                            message: format!("no field `{name}`"),
-                            line,
-                        })?
-                    };
+                    let v = s.get(&name).cloned().ok_or_else(|| VmError {
+                        message: format!("no field `{name}`"),
+                        line,
+                    })?;
                     self.stack.push(v);
                     self.set_ip(ip + 3);
                 }
@@ -446,20 +442,58 @@ impl<'m> Vm<'m> {
                     };
                     let val = self.pop(line)?;
                     let obj = self.pop(line)?;
-                    let Value::Struct(h) = obj else {
+                    let Value::Struct(mut s) = obj else {
                         return Err(VmError {
                             message: format!("cannot set field on {}", obj.type_name()),
                             line,
                         });
                     };
-                    let ok = h.borrow_mut().set(&name, val);
-                    if !ok {
+                    if !s.set(&name, val) {
                         return Err(VmError {
                             message: format!("no field `{name}`"),
                             line,
                         });
                     }
+                    self.stack.push(Value::Struct(s));
                     self.set_ip(ip + 3);
+                }
+                Op::SetLocalField => {
+                    let slot = self.read_u16(ip + 1)? as usize;
+                    let idx = self.read_u16(ip + 3)? as usize;
+                    let name = match self.module.functions[func].chunk.constants.get(idx) {
+                        Some(Value::Str(s)) => s.to_string(),
+                        _ => {
+                            return Err(VmError {
+                                message: "field name constant missing".into(),
+                                line,
+                            })
+                        }
+                    };
+                    let val = self.pop(line)?;
+                    let addr = base + slot;
+                    if addr >= self.stack.len() {
+                        return Err(VmError {
+                            message: "bad local slot".into(),
+                            line,
+                        });
+                    }
+                    match &mut self.stack[addr] {
+                        Value::Struct(s) => {
+                            if !s.set(&name, val) {
+                                return Err(VmError {
+                                    message: format!("no field `{name}`"),
+                                    line,
+                                });
+                            }
+                        }
+                        other => {
+                            return Err(VmError {
+                                message: format!("cannot set field on {}", other.type_name()),
+                                line,
+                            })
+                        }
+                    }
+                    self.set_ip(ip + 5);
                 }
                 Op::Push => {
                     let val = self.pop(line)?;
@@ -578,13 +612,15 @@ impl<'m> Vm<'m> {
                         });
                     }
                     let recv_idx = self.stack.len() - argc - 1;
-                    let Value::Struct(h) = self.stack[recv_idx].clone() else {
-                        return Err(VmError {
-                            message: "method receiver is not a struct".into(),
-                            line,
-                        });
+                    let type_name = match &self.stack[recv_idx] {
+                        Value::Struct(s) => s.name.clone(),
+                        _ => {
+                            return Err(VmError {
+                                message: "method receiver is not a struct".into(),
+                                line,
+                            })
+                        }
                     };
-                    let type_name = h.borrow().name.clone();
                     let full = format!("{type_name}.{method_name}");
                     let target = self
                         .module
@@ -748,13 +784,13 @@ pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
             e.span.line, e.span.col, e.message
         )
     })?;
-    Checker::new(&program).check().map_err(|e| {
+    let consts = Checker::new(&program).check().map_err(|e| {
         format!(
             "{file}:{}:{}: error: {}",
             e.span.line, e.span.col, e.message
         )
     })?;
-    let module = Compiler::compile(&program)
+    let module = Compiler::compile(&program, consts)
         .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))?;
     let mut vm = Vm::new(&module);
     vm.run().map_err(|e| {
@@ -794,13 +830,13 @@ pub fn run_source(src: &str) -> Result<Vec<String>, String> {
     }
     use crate::compiler::Compiler;
     use crate::resolve::Checker;
-    Checker::new(&program).check().map_err(|e| {
+    let consts = Checker::new(&program).check().map_err(|e| {
         format!(
             "<input>:{}:{}: error: {}",
             e.span.line, e.span.col, e.message
         )
     })?;
-    let module = Compiler::compile(&program)
+    let module = Compiler::compile(&program, consts)
         .map_err(|e| format!("<input>:{}:{}: error: {}", e.line, e.col, e.message))?;
     let mut vm = Vm::new(&module);
     vm.run().map_err(|e| {
@@ -830,13 +866,13 @@ pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
             e.span.line, e.span.col, e.message
         )
     })?;
-    Checker::new(&program).check().map_err(|e| {
+    let consts = Checker::new(&program).check().map_err(|e| {
         format!(
             "{file}:{}:{}: error: {}",
             e.span.line, e.span.col, e.message
         )
     })?;
-    Compiler::compile(&program)
+    Compiler::compile(&program, consts)
         .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 

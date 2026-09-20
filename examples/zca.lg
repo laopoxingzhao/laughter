@@ -1,0 +1,35 @@
+// 零成本向：值语义结构体 + const 编译期折叠
+const N: int = 10;
+const M: int = N * 2 + 1;   // 折叠为 21
+const GREET: string = "zca";
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+fun Point.sum(self: Point) -> int {
+    // 值接收者：这里改 self 不会影响调用方
+    self.x = self.x + 100;
+    return self.x + self.y;
+}
+
+fun main() -> void {
+    print(M);
+    print(GREET);
+
+    let p = Point { x: 1, y: 2 };
+    let q = p;          // 拷贝
+    q.x = 50;
+    print(p.x);         // 1 —— 未受 q 影响
+    print(q.x);         // 50
+    print(p.sum());     // 101+2=103（方法内自增不影响调用方的 p）
+    print(p.x);         // 仍为 1
+
+    let acc = 0;
+    for i in 0..N {
+        if i % 2 == 0 { continue; }
+        acc = acc + i;
+    }
+    print(acc);         // 1+3+5+7+9=25
+}

@@ -243,6 +243,14 @@ pub struct Param {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConstDecl {
+    pub name: Ident,
+    pub ty: TypeExpr,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct ImportItem {
     pub path: String,
     pub alias: Option<Ident>,
@@ -264,6 +272,7 @@ pub struct FunDecl {
 pub enum Item {
     Fun(FunDecl),
     Struct(StructDecl),
+    Const(ConstDecl),
     Import(ImportItem),
     Stmt(Stmt),
 }
@@ -284,6 +293,13 @@ impl Program {
     pub fn structs(&self) -> impl Iterator<Item = &StructDecl> {
         self.items.iter().filter_map(|it| match it {
             Item::Struct(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    pub fn consts(&self) -> impl Iterator<Item = &ConstDecl> {
+        self.items.iter().filter_map(|it| match it {
+            Item::Const(c) => Some(c),
             _ => None,
         })
     }

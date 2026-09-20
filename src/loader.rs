@@ -17,12 +17,18 @@ pub fn parse_source(src: &str) -> Result<Program, String> {
 }
 
 fn parse_source_as(file: &str, src: &str) -> Result<Program, String> {
-    let tokens = Lexer::new(src)
-        .tokenize()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    Parser::new(tokens)
-        .parse_program()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))
+    let tokens = Lexer::new(src).tokenize().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    Parser::new(tokens).parse_program().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })
 }
 
 fn resolve_import(from_file: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -73,7 +79,7 @@ fn load_program(
             None => {
                 for it in sub_items {
                     match it {
-                        Item::Fun(_) | Item::Struct(_) => out_items.push(it),
+                        Item::Fun(_) | Item::Struct(_) | Item::Const(_) => out_items.push(it),
                         _ => {}
                     }
                 }
@@ -141,10 +147,13 @@ pub fn compile_path(path: &Path) -> Result<Module, String> {
     load_program(path, &mut stack, &mut items, &mut ns_aliases)?;
     let program = Program { items };
     let label = path.display().to_string();
-    Checker::new(&program)
-        .check()
-        .map_err(|e| format!("{label}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    Compiler::compile(&program)
+    let consts = Checker::new(&program).check().map_err(|e| {
+        format!(
+            "{label}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    Compiler::compile(&program, consts)
         .map_err(|e| format!("{label}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 
