@@ -51,6 +51,8 @@ pub enum Op {
     StrAt,
     StrSub,
     ToString,
+    /// 栈：recv, args...；按 recv 的结构体类型查 `Type.method` 并调用
+    CallMethod,
 }
 
 impl fmt::Display for Op {
@@ -97,6 +99,7 @@ impl fmt::Display for Op {
             Op::StrAt => "STR_AT",
             Op::StrSub => "STR_SUB",
             Op::ToString => "TO_STRING",
+            Op::CallMethod => "CALL_METHOD",
         };
         write!(f, "{s}")
     }
@@ -154,8 +157,24 @@ impl Chunk {
         self.code.len() - 2
     }
 
+    /// 把跳转占位回填为「当前 code 末尾」的距离。
     pub fn patch_jump(&mut self, offset: usize) -> Result<(), String> {
         let jump = self.code.len() - offset - 2;
+        self.write_jump_at(offset, jump)
+    }
+
+    /// 回填到指定 pc（用于 break/continue）
+    pub fn patch_jump_to(&mut self, offset: usize, target: usize) -> Result<(), String> {
+        // jump 是相对指令操作数之后的正向偏移；若 target 在 offset 前，用 Loop 语义不适用，
+        // 这里 break/continue 都是向前跳。
+        if target < offset + 2 {
+            return Err("patch_jump_to: target before operand".into());
+        }
+        let jump = target - (offset + 2);
+        self.write_jump_at(offset, jump)
+    }
+
+    fn write_jump_at(&mut self, offset: usize, jump: usize) -> Result<(), String> {
         if jump > u16::MAX as usize {
             return Err("jump too large".into());
         }
@@ -303,6 +322,7 @@ pub fn op_from_u8(b: u8) -> Option<Op> {
         x if x == Op::StrAt as u8 => Op::StrAt,
         x if x == Op::StrSub as u8 => Op::StrSub,
         x if x == Op::ToString as u8 => Op::ToString,
+        x if x == Op::CallMethod as u8 => Op::CallMethod,
         _ => return None,
     })
 }

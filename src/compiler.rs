@@ -104,7 +104,14 @@ pub struct Compiler {
     void_fns: HashMap<String, ()>,
     struct_index: HashMap<String, usize>,
     struct_types: Vec<StructType>,
+    /// break/continue 回填
+    loops: Vec<LoopCtx>,
     current: usize,
+}
+
+struct LoopCtx {
+    breaks: Vec<usize>,
+    continues: Vec<usize>,
 }
 
 impl Compiler {
@@ -142,9 +149,14 @@ impl Compiler {
         fn_decls.sort_by_key(|f| f.span.line);
 
         for (i, f) in fn_decls.iter().enumerate() {
-            function_index.insert(f.name.name.clone(), i);
-            if f.ret.is_void() {
-                void_fns.insert(f.name.name.clone(), ());
+            let key = match &f.on_type {
+                Some(t) => format!("{}.{}", t.name, f.name.name),
+                None => f.name.name.clone(),
+            };
+            function_index.insert(key.clone(), i);
+            let is_void = f.ret.is_void();
+            if is_void {
+                void_fns.insert(key, ());
             }
         }
         let toplevel_index = fn_decls.len();
@@ -156,7 +168,11 @@ impl Compiler {
 
         let mut functions: Vec<FnCompiler> = Vec::new();
         for f in &fn_decls {
-            let mut c = FnCompiler::new(f.name.name.clone(), f.params.len() as u8);
+            let fname = match &f.on_type {
+                Some(t) => format!("{}.{}", t.name, f.name.name),
+                None => f.name.name.clone(),
+            };
+            let mut c = FnCompiler::new(fname, f.params.len() as u8);
             for p in &f.params {
                 c.add_local(p.name.name.clone());
             }
@@ -170,6 +186,7 @@ impl Compiler {
             void_fns,
             struct_index,
             struct_types,
+            loops: Vec::new(),
             current: 0,
         };
 
@@ -243,6 +260,22 @@ impl Compiler {
             Stmt::If(i) => self.compile_if(i),
             Stmt::While(w) => self.compile_while(w),
             Stmt::For(f) => self.compile_for(f),
+            Stmt::Break(span) => {
+                if self.loops.is_empty() {
+                    return Err(CompileError::new("`break` outside loop", *span));
+                }
+                let j = self.chunk().emit_jump(Op::Jump, span.line);
+                self.loops.last_mut().unwrap().breaks.push(j);
+                Ok(())
+            }
+            Stmt::Continue(span) => {
+                if self.loops.is_empty() {
+                    return Err(CompileError::new("`continue` outside loop", *span));
+                }
+                let j = self.chunk().emit_jump(Op::Jump, span.line);
+                self.loops.last_mut().unwrap().continues.push(j);
+                Ok(())
+            }
             Stmt::Return(r) => {
                 match &r.value {
                     None => self.chunk().emit_op(Op::Return, r.span.line),
@@ -382,19 +415,86 @@ impl Compiler {
     fn compile_while(&mut self, w: &WhileStmt) -> Result<(), CompileError> {
         let line = w.span.line;
         let loop_start = self.chunk().code.len();
+        self.loops.push(LoopCtx {
+            breaks: Vec::new(),
+            continues: Vec::new(),
+        });
         self.compile_expr(&w.cond)?;
         let exit = self.chunk().emit_jump(Op::JumpIfFalse, line);
         self.chunk().emit_op(Op::Pop, line);
         self.compile_block(&w.body)?;
+        // continue → 回到条件
+        let cont = self.chunk().code.len();
+        let ctx = self.loops.pop().unwrap();
+        for j in ctx.continues {
+            self.chunk().patch_jump_to(j, cont)?;
+        }
         self.chunk().emit_loop(loop_start, line)?;
         self.chunk().patch_jump(exit)?;
         self.chunk().emit_op(Op::Pop, line);
+        let end = self.chunk().code.len();
+        for j in ctx.breaks {
+            self.chunk().patch_jump_to(j, end)?;
+        }
         Ok(())
     }
 
-    /// for x in arr { body } 脱糖为下标 while
+    /// for：数组 for-in 或 `a..b` 范围；支持 break/continue
     fn compile_for(&mut self, f: &ForStmt) -> Result<(), CompileError> {
         let line = f.span.line;
+        if let Expr::Range { start, end, .. } = &f.iter {
+            self.fn_mut().begin_scope();
+            self.compile_expr(start)?;
+            self.fn_mut().add_local(f.var.name.clone());
+            self.compile_expr(end)?;
+            self.fn_mut().add_local("\0for_end".into());
+            let i_slot = self.fn_mut().resolve_local(&f.var.name).unwrap();
+            let end_slot = self.fn_mut().resolve_local("\0for_end").unwrap();
+
+            let loop_start = self.chunk().code.len();
+            self.loops.push(LoopCtx {
+                breaks: Vec::new(),
+                continues: Vec::new(),
+            });
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(i_slot, line);
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(end_slot, line);
+            self.chunk().emit_op(Op::Lt, line);
+            let exit = self.chunk().emit_jump(Op::JumpIfFalse, line);
+            self.chunk().emit_op(Op::Pop, line);
+
+            self.fn_mut().begin_scope();
+            for stmt in &f.body.stmts {
+                self.compile_stmt(stmt)?;
+            }
+            self.fn_mut().end_scope(line);
+
+            // continue 目标：增量
+            let inc = self.chunk().code.len();
+            let ctx = self.loops.pop().unwrap();
+            for j in ctx.continues {
+                self.chunk().patch_jump_to(j, inc)?;
+            }
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(i_slot, line);
+            self.chunk().emit_const(Value::Int(1), line)?;
+            self.chunk().emit_op(Op::Add, line);
+            self.chunk().emit_op(Op::SetLocal, line);
+            self.chunk().emit_u16(i_slot, line);
+            self.chunk().emit_op(Op::Pop, line);
+            self.chunk().emit_loop(loop_start, line)?;
+            self.chunk().patch_jump(exit)?;
+            self.chunk().emit_op(Op::Pop, line);
+            let end_pc = self.chunk().code.len();
+            for j in ctx.breaks {
+                self.chunk().patch_jump_to(j, end_pc)?;
+            }
+            self.fn_mut().end_scope(line);
+            return Ok(());
+        }
+
+        // 数组 for-in
         self.fn_mut().begin_scope();
         self.compile_expr(&f.iter)?;
         self.fn_mut().add_local("\0for_arr".into());
@@ -411,7 +511,10 @@ impl Compiler {
             .ok_or_else(|| CompileError::new("for-in temp missing", f.span))?;
 
         let loop_start = self.chunk().code.len();
-        // cond: i < len(arr)
+        self.loops.push(LoopCtx {
+            breaks: Vec::new(),
+            continues: Vec::new(),
+        });
         self.chunk().emit_op(Op::GetLocal, line);
         self.chunk().emit_u16(i_slot, line);
         self.chunk().emit_op(Op::GetLocal, line);
@@ -421,7 +524,6 @@ impl Compiler {
         let exit = self.chunk().emit_jump(Op::JumpIfFalse, line);
         self.chunk().emit_op(Op::Pop, line);
 
-        // x = arr[i]
         self.chunk().emit_op(Op::GetLocal, line);
         self.chunk().emit_u16(arr_slot, line);
         self.chunk().emit_op(Op::GetLocal, line);
@@ -434,7 +536,11 @@ impl Compiler {
         }
         self.fn_mut().end_scope(line);
 
-        // i = i + 1
+        let inc = self.chunk().code.len();
+        let ctx = self.loops.pop().unwrap();
+        for j in ctx.continues {
+            self.chunk().patch_jump_to(j, inc)?;
+        }
         self.chunk().emit_op(Op::GetLocal, line);
         self.chunk().emit_u16(i_slot, line);
         self.chunk().emit_const(Value::Int(1), line)?;
@@ -446,8 +552,11 @@ impl Compiler {
         self.chunk().emit_loop(loop_start, line)?;
         self.chunk().patch_jump(exit)?;
         self.chunk().emit_op(Op::Pop, line);
-
-        self.fn_mut().end_scope(line); // pops for_i then for_arr
+        let end_pc = self.chunk().code.len();
+        for j in ctx.breaks {
+            self.chunk().patch_jump_to(j, end_pc)?;
+        }
+        self.fn_mut().end_scope(line);
         Ok(())
     }
 
@@ -492,6 +601,38 @@ impl Compiler {
             }
             Expr::Binary { op, lhs, rhs, span } => self.compile_binary(*op, lhs, rhs, *span),
             Expr::Call { callee, args, span } => self.compile_call(&callee.name, args, *span),
+            Expr::MethodCall {
+                recv,
+                method,
+                args,
+                span,
+            } => {
+                if let Expr::Var { name } = recv.as_ref() {
+                    let dotted = format!("{}.{}", name.name, method.name);
+                    if self.function_index.contains_key(&dotted) {
+                        return self.compile_call(&dotted, args, *span);
+                    }
+                }
+                self.compile_expr(recv)?;
+                for a in args {
+                    self.compile_expr(a)?;
+                }
+                let cidx = self
+                    .chunk()
+                    .add_constant(Value::Str(Rc::from(method.name.as_str())))?;
+                self.chunk().emit_op(Op::CallMethod, span.line);
+                self.chunk().emit_u16(cidx, span.line);
+                self.chunk().emit_u16(args.len() as u16, span.line);
+                Ok(())
+            }
+            Expr::Range { start, end, span } => {
+                // 范围字面量仅应出现在 for；单独求值时编译为错误提示用空数组
+                let _ = (start, end);
+                Err(CompileError::new(
+                    "range `a..b` is only allowed in `for`",
+                    *span,
+                ))
+            }
             Expr::Index { base, index, span } => {
                 self.compile_expr(base)?;
                 self.compile_expr(index)?;

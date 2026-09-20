@@ -1,0 +1,7 @@
+import "mod_math.lg";
+import "mod_math.lg" as math;
+
+fun main() -> void {
+    print(add(2, 3));
+    print(double(21));
+}

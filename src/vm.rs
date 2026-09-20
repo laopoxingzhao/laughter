@@ -558,6 +558,46 @@ impl<'m> Vm<'m> {
                     self.stack.push(Value::Str(Rc::from(s.as_str())));
                     self.set_ip(ip + 1);
                 }
+                Op::CallMethod => {
+                    let name_idx = self.read_u16(ip + 1)? as usize;
+                    let argc = self.read_u16(ip + 3)? as usize;
+                    let method_name =
+                        match self.module.functions[func].chunk.constants.get(name_idx) {
+                            Some(Value::Str(s)) => s.to_string(),
+                            _ => {
+                                return Err(VmError {
+                                    message: "method name constant missing".into(),
+                                    line,
+                                })
+                            }
+                        };
+                    if self.stack.len() < argc + 1 {
+                        return Err(VmError {
+                            message: "stack underflow in method call".into(),
+                            line,
+                        });
+                    }
+                    let recv_idx = self.stack.len() - argc - 1;
+                    let Value::Struct(h) = self.stack[recv_idx].clone() else {
+                        return Err(VmError {
+                            message: "method receiver is not a struct".into(),
+                            line,
+                        });
+                    };
+                    let type_name = h.borrow().name.clone();
+                    let full = format!("{type_name}.{method_name}");
+                    let target = self
+                        .module
+                        .functions
+                        .iter()
+                        .position(|f| f.name == full)
+                        .ok_or_else(|| VmError {
+                            message: format!("undefined method `{full}`"),
+                            line,
+                        })?;
+                    self.set_ip(ip + 5);
+                    self.push_frame(target)?;
+                }
             }
         }
     }
@@ -727,7 +767,49 @@ pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
 }
 
 pub fn run_source(src: &str) -> Result<Vec<String>, String> {
-    run_source_file("<input>", src)
+    // 含 import 时必须走文件加载器（相对路径解析）
+    if src.contains("import ") {
+        // 粗测：真正拒绝在 parse 后
+    }
+    let program = {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+        let tokens = Lexer::new(src).tokenize().map_err(|e| {
+            format!(
+                "<input>:{}:{}: error: {}",
+                e.span.line, e.span.col, e.message
+            )
+        })?;
+        Parser::new(tokens).parse_program().map_err(|e| {
+            format!(
+                "<input>:{}:{}: error: {}",
+                e.span.line, e.span.col, e.message
+            )
+        })?
+    };
+    if program.imports().next().is_some() {
+        return Err(
+            "<input>: error: `import` requires a file path — use `laughter run <file.lg>`".into(),
+        );
+    }
+    use crate::compiler::Compiler;
+    use crate::resolve::Checker;
+    Checker::new(&program).check().map_err(|e| {
+        format!(
+            "<input>:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    let module = Compiler::compile(&program)
+        .map_err(|e| format!("<input>:{}:{}: error: {}", e.line, e.col, e.message))?;
+    let mut vm = Vm::new(&module);
+    vm.run().map_err(|e| {
+        if e.line == 0 {
+            format!("<input>: runtime error: {}", e.message)
+        } else {
+            format!("<input>:{}: runtime error: {}", e.line, e.message)
+        }
+    })
 }
 
 pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {

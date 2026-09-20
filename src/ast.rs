@@ -119,6 +119,19 @@ pub enum Expr {
         fields: Vec<(Ident, Expr)>,
         span: Span,
     },
+    /// 仅用于 `for i in a..b` 的半开区间
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        span: Span,
+    },
+    /// `recv.method(args)`；recv 为命名空间 `ns` 时是模块函数调用
+    MethodCall {
+        recv: Box<Expr>,
+        method: Ident,
+        args: Vec<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -134,7 +147,9 @@ impl Expr {
             | Expr::Index { span, .. }
             | Expr::Array { span, .. }
             | Expr::Field { span, .. }
-            | Expr::StructLit { span, .. } => *span,
+            | Expr::StructLit { span, .. }
+            | Expr::Range { span, .. }
+            | Expr::MethodCall { span, .. } => *span,
             Expr::Var { name } => name.span,
         }
     }
@@ -208,6 +223,8 @@ pub enum Stmt {
     If(IfStmt),
     While(WhileStmt),
     For(ForStmt),
+    Break(Span),
+    Continue(Span),
     Return(ReturnStmt),
     Expr(ExprStmt),
     Block(Block),
@@ -226,8 +243,17 @@ pub struct Param {
 }
 
 #[derive(Debug, Clone)]
+pub struct ImportItem {
+    pub path: String,
+    pub alias: Option<Ident>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct FunDecl {
     pub name: Ident,
+    /// `fun Point.sum(self: Point)` 时为 Some(Point)
+    pub on_type: Option<Ident>,
     pub params: Vec<Param>,
     pub ret: TypeExpr,
     pub body: Block,
@@ -238,6 +264,7 @@ pub struct FunDecl {
 pub enum Item {
     Fun(FunDecl),
     Struct(StructDecl),
+    Import(ImportItem),
     Stmt(Stmt),
 }
 
@@ -261,6 +288,13 @@ impl Program {
         })
     }
 
+    pub fn imports(&self) -> impl Iterator<Item = &ImportItem> {
+        self.items.iter().filter_map(|it| match it {
+            Item::Import(i) => Some(i),
+            _ => None,
+        })
+    }
+
     pub fn top_level_stmts(&self) -> impl Iterator<Item = &Stmt> {
         self.items.iter().filter_map(|it| match it {
             Item::Stmt(s) => Some(s),
@@ -269,6 +303,7 @@ impl Program {
     }
 
     pub fn has_main(&self) -> bool {
-        self.functions().any(|f| f.name.name == "main")
+        self.functions()
+            .any(|f| f.name.name == "main" && f.on_type.is_none())
     }
 }

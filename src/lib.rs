@@ -7,6 +7,7 @@ pub mod ast;
 pub mod bytecode;
 pub mod compiler;
 pub mod lexer;
+pub mod loader;
 pub mod parser;
 pub mod resolve;
 pub mod token;

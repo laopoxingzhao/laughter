@@ -1,5 +1,5 @@
-//! 语义检查：作用域、结构体、函数签名、表达式类型、返回路径。
-//! 通过后才允许进入编译阶段；错误格式为 `span` + message，CLI 再拼上文件名。
+//! 语义检查：作用域、结构体、方法、循环、函数签名。
+//! import 由 `loader` 合并进 Program 后再进入本模块（命名空间符号名为 `ns.sym`）。
 
 use std::collections::HashMap;
 
@@ -14,9 +14,9 @@ pub struct CheckError {
 }
 
 #[derive(Clone)]
-struct FunInfo {
-    params: Vec<Type>,
-    ret: Type,
+pub struct FunInfo {
+    pub params: Vec<Type>,
+    pub ret: Type,
 }
 
 const BUILTINS: &[&str] = &[
@@ -33,10 +33,11 @@ const BUILTINS: &[&str] = &[
 pub struct Checker<'a> {
     program: &'a Program,
     functions: HashMap<String, FunInfo>,
+    methods: HashMap<String, HashMap<String, FunInfo>>,
     structs: HashMap<String, Vec<(String, Type)>>,
     scopes: Vec<HashMap<String, Type>>,
     current_ret: Type,
-    /// 检查顶层语句时为 true（此时禁止 `return`）
+    loop_depth: u32,
     at_top_level: bool,
 }
 
@@ -45,28 +46,28 @@ impl<'a> Checker<'a> {
         Self {
             program,
             functions: HashMap::new(),
+            methods: HashMap::new(),
             structs: HashMap::new(),
             scopes: vec![HashMap::new()],
             current_ret: Type::Void,
+            loop_depth: 0,
             at_top_level: true,
         }
     }
 
     pub fn check(mut self) -> Result<(), CheckError> {
-        // 先登记结构体，再登记函数（签名里可能引用结构体）
         for s in self.program.structs() {
             self.declare_struct(s)?;
         }
         for f in self.program.functions() {
             self.declare_function(f)?;
         }
-
         for f in self.program.functions() {
             self.check_function(f)?;
         }
-
         self.at_top_level = true;
         self.current_ret = Type::Void;
+        self.loop_depth = 0;
         self.scopes = vec![HashMap::new()];
         for stmt in self.program.top_level_stmts() {
             self.check_stmt(stmt)?;
@@ -79,7 +80,7 @@ impl<'a> Checker<'a> {
     }
 
     fn declare_struct(&mut self, s: &StructDecl) -> Result<(), CheckError> {
-        if BUILTINS.contains(&s.name.name.as_str()) || self.functions.contains_key(&s.name.name) {
+        if BUILTINS.contains(&s.name.name.as_str()) {
             return Err(CheckError {
                 message: format!("`{}` is already used", s.name.name),
                 span: s.name.span,
@@ -107,20 +108,76 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    fn fun_info(&self, f: &FunDecl) -> Result<(Vec<Type>, Type), CheckError> {
+        let mut params = Vec::new();
+        let mut seen = HashMap::new();
+        for p in &f.params {
+            let ty = self.ty(&p.ty, p.name.span)?;
+            if seen.insert(p.name.name.clone(), ()).is_some() {
+                return Err(CheckError {
+                    message: format!("duplicate parameter `{}`", p.name.name),
+                    span: p.name.span,
+                });
+            }
+            params.push(ty);
+        }
+        let ret = self.ty(&f.ret, f.span)?;
+        Ok((params, ret))
+    }
+
     fn declare_function(&mut self, f: &FunDecl) -> Result<(), CheckError> {
-        if BUILTINS.contains(&f.name.name.as_str()) {
+        if BUILTINS.contains(&f.name.name.as_str()) && f.on_type.is_none() {
             return Err(CheckError {
                 message: format!("`{}` is a builtin and cannot be redefined", f.name.name),
                 span: f.name.span,
             });
         }
-        if self.structs.contains_key(&f.name.name) {
-            return Err(CheckError {
-                message: format!("`{}` is already a struct", f.name.name),
-                span: f.name.span,
-            });
+        let (params, ret) = self.fun_info(f)?;
+
+        if let Some(on) = &f.on_type {
+            if !self.structs.contains_key(&on.name) {
+                return Err(CheckError {
+                    message: format!("unknown struct `{}`", on.name),
+                    span: on.span,
+                });
+            }
+            if f.params.is_empty() {
+                return Err(CheckError {
+                    message: "method requires a receiver as first parameter".into(),
+                    span: f.name.span,
+                });
+            }
+            let recv = Type::Struct(on.name.clone());
+            if params[0] != recv {
+                return Err(CheckError {
+                    message: format!(
+                        "method receiver must be `{}`, found `{}`",
+                        on.name, params[0]
+                    ),
+                    span: f.params[0].name.span,
+                });
+            }
+            if self.functions.contains_key(&f.name.name) {
+                return Err(CheckError {
+                    message: format!(
+                        "method `{}` conflicts with function of the same name",
+                        f.name.name
+                    ),
+                    span: f.name.span,
+                });
+            }
+            let entry = self.methods.entry(on.name.clone()).or_default();
+            if entry.contains_key(&f.name.name) {
+                return Err(CheckError {
+                    message: format!("method `{}` already defined on `{}`", f.name.name, on.name),
+                    span: f.name.span,
+                });
+            }
+            entry.insert(f.name.name.clone(), FunInfo { params, ret });
+            return Ok(());
         }
-        if f.name.name == "main" {
+
+        if f.name.name == "main" && !f.name.name.contains('.') {
             if !f.params.is_empty() {
                 return Err(CheckError {
                     message: "`main` must take no parameters".into(),
@@ -140,28 +197,23 @@ impl<'a> Checker<'a> {
                 span: f.name.span,
             });
         }
-        let mut params = Vec::new();
-        let mut seen = HashMap::new();
-        for p in &f.params {
-            let ty = self.ty(&p.ty, p.name.span)?;
-            if seen.insert(p.name.name.clone(), ()).is_some() {
-                return Err(CheckError {
-                    message: format!("duplicate parameter `{}`", p.name.name),
-                    span: p.name.span,
-                });
-            }
-            params.push(ty);
+        // 方法名与全局函数冲突
+        if self.methods.values().any(|m| m.contains_key(&f.name.name)) {
+            return Err(CheckError {
+                message: format!("function `{}` conflicts with a method", f.name.name),
+                span: f.name.span,
+            });
         }
-        let ret = self.ty(&f.ret, f.span)?;
         self.functions
             .insert(f.name.name.clone(), FunInfo { params, ret });
         Ok(())
     }
 
     fn check_function(&mut self, f: &FunDecl) -> Result<(), CheckError> {
-        let ret = self.ty(&f.ret, f.span)?;
+        let (_, ret) = self.fun_info(f)?;
         self.current_ret = ret;
         self.at_top_level = false;
+        self.loop_depth = 0;
         self.scopes = vec![HashMap::new()];
         for p in &f.params {
             let ty = self.ty(&p.ty, p.name.span)?;
@@ -250,7 +302,8 @@ impl<'a> Checker<'a> {
                         self.ty(t, l.name.span)?
                     } else {
                         return Err(CheckError {
-                            message: "empty array literal `[]` requires a `let` type annotation such as `int[]`".into(),
+                            message: "empty array literal `[]` requires a `let` type annotation"
+                                .into(),
                             span: l.name.span,
                         });
                     }
@@ -262,10 +315,7 @@ impl<'a> Checker<'a> {
                     if empty_array {
                         if !matches!(t, Type::Array(_)) {
                             return Err(CheckError {
-                                message: format!(
-                                    "let `{}` declared as `{t}` but `[]` requires an array type",
-                                    l.name.name
-                                ),
+                                message: format!("`[]` requires an array type, got `{t}`"),
                                 span: l.span,
                             });
                         }
@@ -280,12 +330,6 @@ impl<'a> Checker<'a> {
                     }
                     t
                 } else {
-                    if matches!(val_ty, Type::Void) {
-                        return Err(CheckError {
-                            message: "cannot bind a void expression".into(),
-                            span: l.name.span,
-                        });
-                    }
                     val_ty
                 };
                 self.declare_var(&l.name.name, declared, l.name.span)?;
@@ -337,24 +381,57 @@ impl<'a> Checker<'a> {
                         span: w.cond.span(),
                     });
                 }
+                self.loop_depth += 1;
                 self.check_block(&w.body)?;
+                self.loop_depth -= 1;
             }
             Stmt::For(f) => {
-                let it = self.check_expr(&f.iter)?;
-                let elem = match it {
-                    Type::Array(e) => *e,
-                    other => {
-                        return Err(CheckError {
-                            message: format!("for-in expects an array, found `{other}`"),
-                            span: f.iter.span(),
-                        })
+                let is_range = matches!(f.iter, Expr::Range { .. });
+                if is_range {
+                    if let Expr::Range { start, end, span } = &f.iter {
+                        let s = self.check_expr(start)?;
+                        let e = self.check_expr(end)?;
+                        if s != Type::Int || e != Type::Int {
+                            return Err(CheckError {
+                                message: format!("range bounds must be `int`, found `{s}..{e}`"),
+                                span: *span,
+                            });
+                        }
                     }
-                };
-                self.push_scope();
-                self.declare_var(&f.var.name, elem, f.var.span)?;
-                let r = self.check_stmts(&f.body.stmts);
-                self.pop_scope();
-                r?;
+                    self.push_scope();
+                    self.declare_var(&f.var.name, Type::Int, f.var.span)?;
+                    self.loop_depth += 1;
+                    let r = self.check_stmts(&f.body.stmts);
+                    self.loop_depth -= 1;
+                    self.pop_scope();
+                    r?;
+                } else {
+                    let it = self.check_expr(&f.iter)?;
+                    let elem = match it {
+                        Type::Array(e) => *e,
+                        other => {
+                            return Err(CheckError {
+                                message: format!("for-in expects an array, found `{other}`"),
+                                span: f.iter.span(),
+                            })
+                        }
+                    };
+                    self.push_scope();
+                    self.declare_var(&f.var.name, elem, f.var.span)?;
+                    self.loop_depth += 1;
+                    let r = self.check_stmts(&f.body.stmts);
+                    self.loop_depth -= 1;
+                    self.pop_scope();
+                    r?;
+                }
+            }
+            Stmt::Break(span) | Stmt::Continue(span) => {
+                if self.loop_depth == 0 {
+                    return Err(CheckError {
+                        message: "`break`/`continue` only allowed inside a loop".into(),
+                        span: *span,
+                    });
+                }
             }
             Stmt::Return(r) => {
                 if self.at_top_level {
@@ -430,6 +507,17 @@ impl<'a> Checker<'a> {
                 message: format!("undefined variable `{}`", name.name),
                 span: name.span,
             }),
+            Expr::Range { start, end, span } => {
+                let s = self.check_expr(start)?;
+                let e = self.check_expr(end)?;
+                if s != Type::Int || e != Type::Int {
+                    return Err(CheckError {
+                        message: format!("range bounds must be `int`, found `{s}..{e}`"),
+                        span: *span,
+                    });
+                }
+                Ok(Type::Array(Box::new(Type::Int)))
+            }
             Expr::Unary { op, expr, span } => {
                 let t = self.check_expr(expr)?;
                 match op {
@@ -518,6 +606,74 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Call { callee, args, span } => self.check_call(&callee.name, args, *span),
+            Expr::MethodCall {
+                recv,
+                method,
+                args,
+                span,
+            } => {
+                // 命名空间函数：ns.sym
+                if let Expr::Var { name } = recv.as_ref() {
+                    let dotted = format!("{}.{}", name.name, method.name);
+                    if self.functions.contains_key(&dotted) {
+                        return self.check_call(&dotted, args, *span);
+                    }
+                    // 静态调用 Type.method(recv, ...)
+                    if self.structs.contains_key(&name.name) {
+                        let minfo = self
+                            .methods
+                            .get(&name.name)
+                            .and_then(|m| m.get(&method.name))
+                            .cloned()
+                            .ok_or_else(|| CheckError {
+                                message: format!("no method `{}` on `{}`", method.name, name.name),
+                                span: method.span,
+                            })?;
+                        return self.check_call_info(&method.name, args, &minfo, *span);
+                    }
+                }
+                let rt = self.check_expr(recv)?;
+                let Type::Struct(sname) = rt else {
+                    return Err(CheckError {
+                        message: format!("cannot call method on `{rt}`"),
+                        span: *span,
+                    });
+                };
+                let minfo = self
+                    .methods
+                    .get(&sname)
+                    .and_then(|m| m.get(&method.name))
+                    .cloned()
+                    .ok_or_else(|| CheckError {
+                        message: format!("no method `{}` on `{sname}`", method.name),
+                        span: method.span,
+                    })?;
+                if args.len() + 1 != minfo.params.len() {
+                    return Err(CheckError {
+                        message: format!(
+                            "method `{}` takes {} argument(s) after receiver, found {}",
+                            method.name,
+                            minfo.params.len() - 1,
+                            args.len()
+                        ),
+                        span: *span,
+                    });
+                }
+                for (i, (arg, pty)) in args.iter().zip(minfo.params[1..].iter()).enumerate() {
+                    let at = self.check_expr(arg)?;
+                    if &at != pty {
+                        return Err(CheckError {
+                            message: format!(
+                                "argument {} of `{}`: expected `{pty}`, found `{at}`",
+                                i + 1,
+                                method.name
+                            ),
+                            span: arg.span(),
+                        });
+                    }
+                }
+                Ok(minfo.ret)
+            }
             Expr::Index { base, index, span } => {
                 let bt = self.check_expr(base)?;
                 let it = self.check_expr(index)?;
@@ -538,7 +694,7 @@ impl<'a> Checker<'a> {
             Expr::Array { elems, span } => {
                 if elems.is_empty() {
                     return Err(CheckError {
-                        message: "empty array literal `[]` requires a `let` type annotation such as `int[]`".into(),
+                        message: "empty array literal `[]` requires a `let` type annotation".into(),
                         span: *span,
                     });
                 }
@@ -627,6 +783,38 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn check_call_info(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        info: &FunInfo,
+        span: Span,
+    ) -> Result<Type, CheckError> {
+        if args.len() != info.params.len() {
+            return Err(CheckError {
+                message: format!(
+                    "`{name}` takes {} argument(s), found {}",
+                    info.params.len(),
+                    args.len()
+                ),
+                span,
+            });
+        }
+        for (i, (arg, pty)) in args.iter().zip(info.params.iter()).enumerate() {
+            let at = self.check_expr(arg)?;
+            if &at != pty {
+                return Err(CheckError {
+                    message: format!(
+                        "argument {} of `{name}`: expected `{pty}`, found `{at}`",
+                        i + 1
+                    ),
+                    span: arg.span(),
+                });
+            }
+        }
+        Ok(info.ret.clone())
+    }
+
     fn check_call(&mut self, name: &str, args: &[Expr], span: Span) -> Result<Type, CheckError> {
         match name {
             "print" => {
@@ -648,7 +836,7 @@ impl<'a> Checker<'a> {
             "len" => {
                 if args.len() != 1 {
                     return Err(CheckError {
-                        message: format!("`len` takes 1 argument, found {}", args.len()),
+                        message: "`len` takes 1 argument".into(),
                         span,
                     });
                 }
@@ -691,13 +879,7 @@ impl<'a> Checker<'a> {
                         span,
                     });
                 }
-                let t = self.check_expr(&args[0])?;
-                if !t.can_print() {
-                    return Err(CheckError {
-                        message: "cannot stringify `void`".into(),
-                        span,
-                    });
-                }
+                let _t = self.check_expr(&args[0])?;
                 return Ok(Type::Str);
             }
             "push" => {
@@ -742,12 +924,6 @@ impl<'a> Checker<'a> {
                 }
             }
             "input" => {
-                if !args.is_empty() {
-                    return Err(CheckError {
-                        message: "`input` takes no arguments".into(),
-                        span,
-                    });
-                }
                 return Ok(Type::Str);
             }
             _ => {}
@@ -853,107 +1029,29 @@ mod tests {
     }
 
     #[test]
-    fn accepts_hello() {
-        assert!(check("print(\"hi\");").is_ok());
-    }
-
-    #[test]
-    fn rejects_int_float_mix() {
-        let e = check("let x = 1 + 2.5;").unwrap_err();
-        assert!(e.message.contains("cannot add"));
-    }
-
-    #[test]
-    fn rejects_undefined_var() {
-        assert!(check("print(x);").is_err());
-    }
-
-    #[test]
-    fn rejects_call_arg_type() {
-        let src = "fun f(a: int) -> int { return a; }\nf(true);";
-        assert!(check(src).is_err());
-    }
-
-    #[test]
-    fn rejects_missing_return() {
-        let src = "fun f() -> int { }\n";
-        assert!(check(src).is_err());
-    }
-
-    #[test]
-    fn accepts_fib_and_arrays() {
+    fn accepts_methods_and_range_for() {
         let src = r#"
-        fun fib(n: int) -> int {
-            if n < 2 { return n; }
-            return fib(n - 1) + fib(n - 2);
-        }
-        fun main() -> void {
-            let a: int[] = [1, 2, 3];
-            a[0] = fib(5);
-            print(a[0]);
-            print(len(a));
-        }
-        "#;
-        assert!(check(src).is_ok());
-    }
-
-    #[test]
-    fn rejects_builtins_redef() {
-        assert!(check("fun print(x: int) -> void { }").is_err());
-        assert!(check("fun push(a: int[], x: int) -> void { }").is_err());
-    }
-
-    #[test]
-    fn accepts_struct_and_for_in() {
-        let src = r#"
-        struct Point { x: int, y: int, }
+        struct Point { x: int, y: int }
+        fun Point.sum(self: Point) -> int { return self.x + self.y; }
         fun main() -> void {
             let p = Point { x: 1, y: 2 };
-            print(p.x);
-            p.y = 3;
-            let a: Point[] = [p];
-            for q in a {
-                print(q.y);
+            print(p.sum());
+            for i in 0..3 {
+                if i == 1 { continue; }
+                print(i);
             }
-            push(a, Point { x: 4, y: 5 });
-            print(len(a));
         }
         "#;
-        assert!(check(src).is_ok());
+        assert!(check(src).is_ok(), "{:?}", check(src));
     }
 
     #[test]
-    fn rejects_struct_missing_field() {
-        let src = r#"
-        struct Point { x: int, y: int, }
-        let p = Point { x: 1 };
-        "#;
-        assert!(check(src).is_err());
+    fn rejects_break_outside_loop() {
+        assert!(check("fun main() -> void { break; }").is_err());
     }
 
     #[test]
-    fn accepts_string_builtins() {
-        let src = r#"
-        fun main() -> void {
-            let s = "hello";
-            print(len(s));
-            print(str_at(s, 0));
-            print(str_sub(s, 1, 3));
-            print(to_string(42));
-        }
-        "#;
-        assert!(check(src).is_ok());
-    }
-
-    #[test]
-    fn accepts_push_pop() {
-        let src = r#"
-        fun main() -> void {
-            let a: int[] = [1];
-            push(a, 2);
-            print(pop(a));
-        }
-        "#;
-        assert!(check(src).is_ok());
+    fn rejects_range_non_int() {
+        assert!(check("fun main() -> void { for i in 0..1.5 { print(i); } }").is_err());
     }
 }

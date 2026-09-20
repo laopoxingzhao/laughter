@@ -139,7 +139,12 @@ impl<'a> Lexer<'a> {
             }
             b'.' => {
                 self.bump();
-                TokenKind::Dot
+                if self.peek() == Some(b'.') {
+                    self.bump();
+                    TokenKind::DotDot
+                } else {
+                    TokenKind::Dot
+                }
             }
             b'+' => {
                 self.bump();
@@ -251,6 +256,10 @@ impl<'a> Lexer<'a> {
             "struct" => TokenKind::Struct,
             "for" => TokenKind::For,
             "in" => TokenKind::In,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
+            "import" => TokenKind::Import,
+            "as" => TokenKind::As,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

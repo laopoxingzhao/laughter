@@ -1,0 +1,26 @@
+struct Point {
+    x: int,
+    y: int,
+}
+
+fun Point.sum(self: Point) -> int {
+    return self.x + self.y;
+}
+
+fun main() -> void {
+    let p = Point { x: 3, y: 4 };
+    print(p.sum());
+    print(Point.sum(p));
+
+    for i in 0..5 {
+        if i == 2 { continue; }
+        if i == 4 { break; }
+        print(i);
+    }
+
+    let total = 0;
+    for i in 1..4 {
+        total = total + i;
+    }
+    print(total);
+}

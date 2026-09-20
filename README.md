@@ -7,7 +7,7 @@
 | 源文件后缀 | `.lg` |
 | 宿主实现 | Rust + Cargo |
 | 仓库 | https://github.com/laopoxingzhao/laughter |
-| 设计文档 | [`docs/compose/spec/laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md) |
+| 设计文档 | [`laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md)、[`lang-next.md`](docs/compose/spec/lang-next.md) |
 
 ## 构建与测试
 
@@ -55,9 +55,10 @@ fun main() -> void {
 |------|------|
 | 类型 | `int` `float` `bool` `string` `T[]` `void` 以及 `struct`（无隐式转换） |
 | 变量 | `let x: int = 1;` 或 `let y = 2;`；`x = ...;` 赋值 |
-| 控制流 | `if` / `else if` / `else` / `while` / `for x in arr` |
+| 控制流 | `if` / `else if` / `else` / `while` / `for x in arr` / `for i in a..b` / `break` / `continue` |
 | 函数 | `fun name(p: T) -> R { ... }`，允许递归；有 `main` 时从 `main` 进入 |
-| 结构体 | `struct Point { x: int, y: int }`；`Point { x: 1, y: 2 }`；`p.x` 读写 |
+| 结构体 | `struct Point { x: int, y: int }`；字面量与字段读写；方法 `fun Point.sum(self: Point) -> int` |
+| 模块 | `import "math.lg";` 或 `import "math.lg" as math;`（`math.add`）；只合并声明，不执行目标文件顶层语句 |
 | 数组 | 同构 `T[]`；`push`/`pop`；索引越界与空 `pop` 为运行时错误 |
 | 内建 | `print` `len` `str_at` `str_sub` `to_string` `push` `pop` `input` |
 | 运算符 | `+ - * / %` `== != < <= > >=` `&& \|\| !`；字符串 `+` 拼接 |
@@ -75,6 +76,8 @@ fun main() -> void {
 | `examples/struct.lg` | 结构体字段、`for-in` |
 | `examples/strings.lg` | 字符串 API |
 | `examples/forin.lg` | `push`/`pop`/`for-in` |
+| `examples/methods_range.lg` | 结构体方法、`for i in 0..n`、`break`/`continue` |
+| `examples/mod_main.lg` + `mod_math.lg` | 多文件 `import` |
 | `tests/fixtures/type_error.lg` | 应被拒绝的类型错误样例 |
 
 ## 编译管线与源码地图
@@ -94,4 +97,6 @@ fun main() -> void {
 
 ## 本期不做
 
-模块 import、闭包、结构体方法、范围 for（`for i in 0..n`）、隐式数值转换、完整标准库、GC、LLVM/原生可执行文件、REPL、语言服务器。
+方法重载/`impl` 块、import 包管理、`break` 带值、标签循环、闭包/函数值、范围 `for` 以外的迭代器、GC、LLVM/原生可执行文件、REPL、语言服务器。
+
+模块 `import` 需通过文件路径运行：`laughter run examples/mod_main.lg`（`run_source` 不解析 import）。

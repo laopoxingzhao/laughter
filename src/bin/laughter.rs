@@ -1,11 +1,11 @@
 //! CLI：`laughter run|check|disasm <file.lg>`
 //! 诊断格式：编译期 `file:line:col: error:`，运行时 `file:line: runtime error:`。
+//! `run` 通过 loader 解析 `import`（相对当前文件）。
 
 use std::env;
-use std::fs;
 use std::process::ExitCode;
 
-use laughter::vm::{compile_source_file, run_source_file};
+use laughter::loader::{compile_file, run_file};
 
 fn usage() -> ! {
     eprintln!(
@@ -31,16 +31,8 @@ fn main() -> ExitCode {
         usage();
     };
 
-    let src = match fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: 无法读取 `{path}`: {e}");
-            return ExitCode::from(1);
-        }
-    };
-
     match cmd {
-        "run" => match run_source_file(path, &src) {
+        "run" => match run_file(path) {
             Ok(lines) => {
                 for line in lines {
                     println!("{line}");
@@ -52,7 +44,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "check" => match compile_source_file(path, &src) {
+        "check" => match compile_file(path) {
             Ok(_) => {
                 println!("OK: {path}");
                 ExitCode::SUCCESS
@@ -62,7 +54,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "disasm" => match compile_source_file(path, &src) {
+        "disasm" => match compile_file(path) {
             Ok(module) => {
                 for f in &module.functions {
                     let label = if f.name == "$toplevel" {

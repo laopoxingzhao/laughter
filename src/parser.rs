@@ -27,11 +27,93 @@ impl Parser {
                 items.push(Item::Fun(self.fun_decl()?));
             } else if self.check(&TokenKind::Struct) {
                 items.push(Item::Struct(self.struct_decl()?));
+            } else if self.check(&TokenKind::Import) {
+                items.push(Item::Import(self.import_item()?));
             } else {
                 items.push(Item::Stmt(self.stmt()?));
             }
         }
         Ok(Program { items })
+    }
+
+    fn import_item(&mut self) -> Result<ImportItem, ParseError> {
+        let start = self.expect(TokenKind::Import, "`import`")?.span;
+        let tok = self.advance();
+        let path = match tok.kind {
+            TokenKind::Str(s) => s,
+            other => {
+                return Err(ParseError {
+                    message: format!("expected string path after `import`, found {other}"),
+                    span: tok.span,
+                })
+            }
+        };
+        if path.split('/').any(|seg| seg == "..") {
+            return Err(ParseError {
+                message: "import path must not contain `..`".into(),
+                span: tok.span,
+            });
+        }
+        let alias = if self.check(&TokenKind::As) {
+            self.advance();
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        self.expect(TokenKind::Semi, "`;` after import")?;
+        Ok(ImportItem {
+            path,
+            alias,
+            span: start,
+        })
+    }
+
+    fn fun_decl(&mut self) -> Result<FunDecl, ParseError> {
+        let start = self.expect(TokenKind::Fun, "`fun`")?.span;
+        let first = self.expect_ident()?;
+        let (on_type, name) = if self.check(&TokenKind::Dot) {
+            self.advance();
+            let method = self.expect_ident()?;
+            (Some(first), method)
+        } else {
+            (None, first)
+        };
+        self.expect(TokenKind::LParen, "`(` after function name")?;
+        let mut params = Vec::new();
+        if !self.check(&TokenKind::RParen) {
+            loop {
+                let pname = self.expect_ident()?;
+                self.expect(TokenKind::Colon, "`:` after parameter name")?;
+                let pty = self.ty()?;
+                if pty.is_void() {
+                    return Err(ParseError {
+                        message: "parameter type cannot be `void`".into(),
+                        span: pname.span,
+                    });
+                }
+                params.push(Param {
+                    name: pname,
+                    ty: pty,
+                });
+                if self.check(&TokenKind::Comma) {
+                    self.advance();
+                    continue;
+                }
+                break;
+            }
+        }
+        self.expect(TokenKind::RParen, "`)` after parameters")?;
+        self.expect(TokenKind::Arrow, "`->` after parameters")?;
+        let ret = self.ty()?;
+        let body = self.block()?;
+        Ok(FunDecl {
+            name,
+            on_type,
+            params,
+            ret,
+            body,
+            span: start,
+        })
     }
 
     fn struct_decl(&mut self) -> Result<StructDecl, ParseError> {
@@ -162,46 +244,6 @@ impl Parser {
         }
     }
 
-    fn fun_decl(&mut self) -> Result<FunDecl, ParseError> {
-        let start = self.expect(TokenKind::Fun, "`fun`")?.span;
-        let name = self.expect_ident()?;
-        self.expect(TokenKind::LParen, "`(` after function name")?;
-        let mut params = Vec::new();
-        if !self.check(&TokenKind::RParen) {
-            loop {
-                let pname = self.expect_ident()?;
-                self.expect(TokenKind::Colon, "`:` after parameter name")?;
-                let pty = self.ty()?;
-                if pty.is_void() {
-                    return Err(ParseError {
-                        message: "parameter type cannot be `void`".into(),
-                        span: pname.span,
-                    });
-                }
-                params.push(Param {
-                    name: pname,
-                    ty: pty,
-                });
-                if self.check(&TokenKind::Comma) {
-                    self.advance();
-                    continue;
-                }
-                break;
-            }
-        }
-        self.expect(TokenKind::RParen, "`)` after parameters")?;
-        self.expect(TokenKind::Arrow, "`->` after parameters")?;
-        let ret = self.ty()?;
-        let body = self.block()?;
-        Ok(FunDecl {
-            name,
-            params,
-            ret,
-            body,
-            span: start,
-        })
-    }
-
     fn block(&mut self) -> Result<Block, ParseError> {
         let start = self.expect(TokenKind::LBrace, "`{`")?.span;
         let mut stmts = Vec::new();
@@ -224,6 +266,16 @@ impl Parser {
         }
         if self.check(&TokenKind::For) {
             return Ok(Stmt::For(self.for_stmt()?));
+        }
+        if self.check(&TokenKind::Break) {
+            let tok = self.advance();
+            self.expect(TokenKind::Semi, "`;` after break")?;
+            return Ok(Stmt::Break(tok.span));
+        }
+        if self.check(&TokenKind::Continue) {
+            let tok = self.advance();
+            self.expect(TokenKind::Semi, "`;` after continue")?;
+            return Ok(Stmt::Continue(tok.span));
         }
         if self.check(&TokenKind::Return) {
             return Ok(Stmt::Return(self.return_stmt()?));
@@ -373,7 +425,23 @@ impl Parser {
 
     // 表达式：or → and → equality → comparison → term → factor → unary → postfix
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
-        self.or()
+        self.range_or_or()
+    }
+
+    /// 仅在 for-in 迭代式位置允许 `a..b`（解析全表达式后若见 `..` 则包一层 Range）
+    fn range_or_or(&mut self) -> Result<Expr, ParseError> {
+        let lhs = self.or()?;
+        if self.check(&TokenKind::DotDot) {
+            self.advance();
+            let rhs = self.or()?;
+            let span = lhs.span();
+            return Ok(Expr::Range {
+                start: Box::new(lhs),
+                end: Box::new(rhs),
+                span,
+            });
+        }
+        Ok(lhs)
     }
 
     fn or(&mut self) -> Result<Expr, ParseError> {
@@ -545,6 +613,28 @@ impl Parser {
             if self.check(&TokenKind::Dot) {
                 self.advance();
                 let name = self.expect_ident()?;
+                if self.check(&TokenKind::LParen) {
+                    self.advance();
+                    let mut args = Vec::new();
+                    if !self.check(&TokenKind::RParen) {
+                        loop {
+                            args.push(self.expr()?);
+                            if self.check(&TokenKind::Comma) {
+                                self.advance();
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    let end = self.expect(TokenKind::RParen, "`)` after method args")?;
+                    expr = Expr::MethodCall {
+                        recv: Box::new(expr),
+                        method: name,
+                        args,
+                        span: end.span,
+                    };
+                    continue;
+                }
                 let span = name.span;
                 expr = Expr::Field {
                     base: Box::new(expr),

@@ -261,3 +261,60 @@ fn empty_struct_lit_is_error_or_parse_ok_block() {
     let err = run_source(src).unwrap_err();
     assert!(err.contains("error"), "{err}");
 }
+
+#[test]
+fn methods_range_example() {
+    let out = laughter::loader::run_file("examples/methods_range.lg").unwrap();
+    assert_eq!(out, vec!["7", "7", "0", "1", "3", "6"]);
+}
+
+#[test]
+fn import_example() {
+    let out = laughter::loader::run_file("examples/mod_main.lg").unwrap();
+    assert_eq!(out, vec!["5", "42"]);
+}
+
+#[test]
+fn range_for_break_continue() {
+    let out = run_source(
+        r#"
+        fun main() -> void {
+            for i in 0..4 {
+                if i == 1 { continue; }
+                if i == 3 { break; }
+                print(i);
+            }
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["0", "2"]);
+}
+
+#[test]
+fn struct_method_instance_call() {
+    let out = run_source(
+        r#"
+        struct P { x: int }
+        fun P.get(self: P) -> int { return self.x; }
+        fun main() -> void {
+            let p = P { x: 9 };
+            print(p.get());
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["9"]);
+}
+
+#[test]
+fn import_in_run_source_rejected() {
+    let err = run_source("import \"x.lg\"; fun main() -> void {}");
+    assert!(err.unwrap_err().contains("import"));
+}
+
+#[test]
+fn break_outside_loop_rejected() {
+    let err = run_source("fun main() -> void { break; }").unwrap_err();
+    assert!(err.contains("break") || err.contains("error"), "{err}");
+}
