@@ -1,10 +1,15 @@
 //! 递归下降语法分析：Token 流 → AST。
 //!
-//! 顶层项目：`struct` / `const` / `fun` / `import` / 语句。
-//! 表达式优先级（低→高）：`||` → `&&` → 相等 → 比较 → `+-` → `*/%` → 一元 → 后缀。
+//! **在做什么**：把一串「词」组装成语法树。  
+//! 递归下降 = 每个语法规则对应一个函数，函数之间互相调用。
 //!
-//! 消歧要点：`Ident {` 仅在后面是 `字段名:` 时才当作结构体字面量，
-//! 避免 `for x in arr { }` 把循环体吃掉。
+//! **举例**：`1 + 2 * 3` 会解析成树：`Add(1, Mul(2, 3))`，因为 `*` 优先级更高。
+//!
+//! **优先级（低→高）**：  
+//! `||` → `&&` → `== !=` → 比较 → `+ -` → `* / %` → 一元 `- !` → `[]` `. ()`
+//!
+//! **易错点**：`for x in arr { ... }` 里 `arr {` 不能被当成结构体字面量。  
+//! 所以只有 `{` 后面紧跟 `字段名:` 时，才认作结构体字面量（见 `struct_lit_ahead`）。
 
 use crate::syntax::ast::*;
 use crate::syntax::token::{Span, Token, TokenKind};
@@ -264,8 +269,11 @@ impl Parser {
         Ok(Block { stmts, span: start })
     }
 
-    /// 语句：先尝试 let/if/while/for/break/continue/return/块，
-    /// 再区分赋值（`x=` / `a[i]=` / `p.f=`）与表达式语句。
+    /// 语句解析入口。
+    ///
+    /// 顺序很重要：先认 `let/if/while/...` 这些「以关键字开头」的语句；
+    /// 再看是不是赋值（`x = ...`、`a[i] = ...`、`p.f = ...`）；
+    /// 剩下的当作表达式语句（例如 `print(1);`），结尾必须有 `;`。
     fn stmt(&mut self) -> Result<Stmt, ParseError> {
         if self.check(&TokenKind::Let) {
             return Ok(Stmt::Let(self.let_stmt()?));

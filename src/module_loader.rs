@@ -1,11 +1,20 @@
-//! 多文件模块加载：解析 `import`，合并顶层声明为单一 `Program`。
+//! 多文件模块加载：`import` 如何工作。
 //!
-//! - `import "rel.lg";`：扁平合入目标文件的 struct/const/fun。
-//! - `import "rel.lg" as ns;`：符号改名为 `ns.name`（方法名去掉 Type 前缀后挂到 ns 下）。
-//! - 只合并**声明**，不执行目标文件顶层语句。
-//! - 路径相对当前文件；禁止 `..`；用栈检测环状 import。
+//! **为什么单独一层**：单文件解析器不知道磁盘上还有别的 `.lg`。  
+//! 这里负责「按路径读文件 → 解析 → 把声明拼进同一个程序」。
 //!
-//! CLI 的 `run`/`check`/`disasm` 走本模块；`run_source` 不走这里。
+//! **两种 import**
+//! ```text
+//! import "math.lg";           // 扁平：math 里的 add 变成全局 add
+//! import "math.lg" as math;   // 命名空间：只能写 math.add
+//! ```
+//!
+//! **安全与语义**
+//! - 路径相对当前文件；禁止 `..`（防止逃出项目目录）
+//! - 用「加载栈」检测 A 导入 B、B 又导入 A 的环
+//! - **只合并声明**（struct/const/fun），不执行被导入文件的顶层语句
+//!
+//! CLI `laughter run foo.lg` 走这里；字符串 API `run_source` 不走这里。
 
 use std::path::{Path, PathBuf};
 

@@ -1,11 +1,16 @@
 //! AST → 栈式字节码。
 //!
-//! 约定（教学实现，见 docs/ARCHITECTURE.md）：
-//! - 局部变量 = 当前函数帧内的栈槽；`let` 把值留在栈上并登记槽位。
-//! - `const` 已折叠，标识符直接 `Const` 字面量，不占槽。
-//! - 结构体值语义：字段赋值经 `SetLocalField` 或「拷贝→SetField→SetLocal」写回。
-//! - `for` 脱糖为下标 + while；`break`/`continue` 记录 Jump 占位，循环结束时回填。
-//! - 方法：`Type.name` 静态 Call；实例调用用 `CallMethod`（VM 按接收者类型名查表）。
+//! **在做什么**：把语法树翻译成 VM 能执行的指令列表。
+//!
+//! **栈机直觉**：像用计算器——先把数「放上去」，再按运算键，结果留在最上面。
+//!
+//! **几条硬约定**（细节见 docs/CODE_TOUR.md）：
+//! 1. 局部变量 = 函数帧里的栈槽；`let` 就是往栈上多压一格并记住槽号。
+//! 2. `const` 在 sema 已算完，这里只发 `Const 字面量`，不占槽。
+//! 3. 结构体是值：改字段要「取出→改→写回」，不能像 Rc 那样共享就地改。
+//! 4. `for` 不生成「迭代器对象」，而是脱糖成下标 + `while`。
+//! 5. `break`/`continue` 先记下跳转位置，循环编译完再「回填」偏移。
+//! 6. 方法：`Point.sum` 可直接 `Call`；`p.sum()` 则由 VM 按类型名查找。
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -309,7 +314,20 @@ impl Compiler {
         }
     }
 
-    /// 赋值：普通变量 / 数组元素 / 字段路径（含多层写回）。
+    /// 编译赋值语句。
+    ///
+    /// 三种形态，指令序列不同：
+    ///
+    /// 1) `x = e`  
+    ///    算出 `e` → `SetLocal 槽x` → `Pop`（运算结果副本）
+    ///
+    /// 2) `a[i] = e`  
+    ///    先压 `a` 和 `i`，再算 `e`，最后 `SetIndex`（数组是句柄，就地改）
+    ///
+    /// 3) `p.f = e`（及多层 `p.a.b = e`）  
+    ///    结构体是值，需要：压根对象 → 取出父节点 → 算 `e` → `SetField` 沿路径写回 → `SetLocal`
+    ///
+    /// `arr[i].f = e`：在栈上保留 `[arr, i]`，再取出元素副本改字段，最后 `SetIndex` 写回数组。
     fn assign(&mut self, a: &AssignStmt) -> Result<(), CompileError> {
         let line = a.span.line;
         let slot = self

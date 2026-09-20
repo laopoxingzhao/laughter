@@ -65,4 +65,5 @@ cargo run -- run examples/hello.lg
 | `examples/zca.lg` | 值语义结构体 + const 折叠 |
 | `examples/mod_main.lg` + `mod_math.lg` | 多文件 import |
 
-语法与语义细节以 [LANGUAGE.md](LANGUAGE.md) 为准。
+语法与语义细节以 [LANGUAGE.md](LANGUAGE.md) 为准。  
+若你不熟悉编译器，请接着读 [CODE_TOUR.md](CODE_TOUR.md)（栈、字节码、值语义的白话说明）。

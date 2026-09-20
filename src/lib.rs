@@ -1,11 +1,21 @@
 //! Laughter 教学语言运行时库。
 //!
-//! 管线：`syntax` → `sema` → `codegen` → `runtime`。
-//! 语言契约见 `docs/LANGUAGE.md`；架构说明见 `docs/ARCHITECTURE.md`。
+//! **完整流程**
+//! ```text
+//! .lg 文件
+//!   → syntax：词法 + 语法 → AST
+//!   → sema：类型检查 + const 折叠
+//!   → codegen：AST → 字节码
+//!   → runtime：栈机执行 → 打印结果
+//! ```
 //!
-//! 常用入口：
-//! - `module_loader::{run_file, compile_file}` — 按路径运行/编译（支持 import）
-//! - `runtime::vm::{run_source, compile_source}` — 单文件源码字符串（无 import）
+//! **你应该从哪读起**
+//! 1. 文档：`docs/CODE_TOUR.md`（小白导读）→ `docs/LANGUAGE.md`（语言规则）
+//! 2. 代码：`src/syntax/lexer.rs` → `parser.rs` → `sema/check.rs` → `codegen/compile.rs` → `runtime/vm.rs`
+//!
+//! **常用 API**
+//! - `run_file` / `compile_file`：按路径（支持 import）——CLI 用这个
+//! - `run_source` / `compile_source`：单文件字符串（测试常用，无 import）
 
 pub mod codegen;
 pub mod module_loader;
