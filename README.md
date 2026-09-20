@@ -53,12 +53,13 @@ fun main() -> void {
 
 | 特性 | 说明 |
 |------|------|
-| 类型 | `int` `float` `bool` `string` `T[]` `void`（`int`/`float` 不隐式转换） |
-| 变量 | `let x: int = 1;` 或 `let y = 2;`（类型取自初始化式）；`x = ...;` 赋值 |
-| 控制流 | `if` / `else if` / `else` / `while` |
-| 函数 | `fun name(p: T) -> R { ... }`，允许递归；存在 `main() -> void` 时从 `main` 进入，否则跑顶层语句 |
-| 数组 | 同构 `T[]`；`let a: int[] = [];` 合法；索引越界为运行时错误 |
-| 内建 | `print(x)`、`len(arr)`（不可重定义） |
+| 类型 | `int` `float` `bool` `string` `T[]` `void` 以及 `struct`（无隐式转换） |
+| 变量 | `let x: int = 1;` 或 `let y = 2;`；`x = ...;` 赋值 |
+| 控制流 | `if` / `else if` / `else` / `while` / `for x in arr` |
+| 函数 | `fun name(p: T) -> R { ... }`，允许递归；有 `main` 时从 `main` 进入 |
+| 结构体 | `struct Point { x: int, y: int }`；`Point { x: 1, y: 2 }`；`p.x` 读写 |
+| 数组 | 同构 `T[]`；`push`/`pop`；索引越界与空 `pop` 为运行时错误 |
+| 内建 | `print` `len` `str_at` `str_sub` `to_string` `push` `pop` `input` |
 | 运算符 | `+ - * / %` `== != < <= > >=` `&& \|\| !`；字符串 `+` 拼接 |
 | 诊断 | 编译期 `file:line:col: error: ...`；运行时 `file:line: runtime error: ...` |
 
@@ -71,6 +72,9 @@ fun main() -> void {
 | `examples/branch.lg` | `if`/`while` |
 | `examples/fun.lg` / `fib.lg` | 用户函数与递归 |
 | `examples/arrays.lg` | 数组字面量、索引、`len` |
+| `examples/struct.lg` | 结构体字段、`for-in` |
+| `examples/strings.lg` | 字符串 API |
+| `examples/forin.lg` | `push`/`pop`/`for-in` |
 | `tests/fixtures/type_error.lg` | 应被拒绝的类型错误样例 |
 
 ## 编译管线与源码地图

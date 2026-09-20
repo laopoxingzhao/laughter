@@ -1,0 +1,9 @@
+fun main() -> void {
+    let s = "hello";
+    print(len(s));
+    print(str_at(s, 0));
+    print(str_sub(s, 1, 3));
+    print(to_string(42));
+    print(to_string(true));
+    print(s + "!");
+}

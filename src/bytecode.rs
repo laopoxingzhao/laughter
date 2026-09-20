@@ -41,6 +41,16 @@ pub enum Op {
     Pop,
     True,
     False,
+    /// 结构体：栈上 field_count 个值 + 类型索引 → 结构体句柄
+    NewStruct,
+    GetField,
+    SetField,
+    Push,
+    ArrayPop,
+    Input,
+    StrAt,
+    StrSub,
+    ToString,
 }
 
 impl fmt::Display for Op {
@@ -78,6 +88,15 @@ impl fmt::Display for Op {
             Op::Pop => "POP",
             Op::True => "TRUE",
             Op::False => "FALSE",
+            Op::NewStruct => "NEW_STRUCT",
+            Op::GetField => "GET_FIELD",
+            Op::SetField => "SET_FIELD",
+            Op::Push => "PUSH",
+            Op::ArrayPop => "ARRAY_POP",
+            Op::Input => "INPUT",
+            Op::StrAt => "STR_AT",
+            Op::StrSub => "STR_SUB",
+            Op::ToString => "TO_STRING",
         };
         write!(f, "{s}")
     }
@@ -175,7 +194,9 @@ impl Chunk {
                 | Op::GetGlobal
                 | Op::SetGlobal
                 | Op::Call
-                | Op::NewArray => {
+                | Op::NewArray
+                | Op::GetField
+                | Op::SetField => {
                     if i + 2 < self.code.len() {
                         let arg = u16::from_le_bytes([self.code[i + 1], self.code[i + 2]]);
                         if op == Op::Const {
@@ -189,6 +210,15 @@ impl Chunk {
                             out.push_str(&format!("{op} {arg}\n"));
                         }
                         i += 3;
+                        continue;
+                    }
+                }
+                Op::NewStruct => {
+                    if i + 4 < self.code.len() {
+                        let ti = u16::from_le_bytes([self.code[i + 1], self.code[i + 2]]);
+                        let n = u16::from_le_bytes([self.code[i + 3], self.code[i + 4]]);
+                        out.push_str(&format!("{op} type={ti} fields={n}\n"));
+                        i += 5;
                         continue;
                     }
                 }
@@ -264,6 +294,15 @@ pub fn op_from_u8(b: u8) -> Option<Op> {
         x if x == Op::Pop as u8 => Op::Pop,
         x if x == Op::True as u8 => Op::True,
         x if x == Op::False as u8 => Op::False,
+        x if x == Op::NewStruct as u8 => Op::NewStruct,
+        x if x == Op::GetField as u8 => Op::GetField,
+        x if x == Op::SetField as u8 => Op::SetField,
+        x if x == Op::Push as u8 => Op::Push,
+        x if x == Op::ArrayPop as u8 => Op::ArrayPop,
+        x if x == Op::Input as u8 => Op::Input,
+        x if x == Op::StrAt as u8 => Op::StrAt,
+        x if x == Op::StrSub as u8 => Op::StrSub,
+        x if x == Op::ToString as u8 => Op::ToString,
         _ => return None,
     })
 }
@@ -279,12 +318,20 @@ pub struct Function {
 }
 
 #[derive(Debug, Clone)]
+pub struct StructType {
+    pub name: String,
+    /// 字段声明顺序
+    pub fields: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Module {
     /// 程序中所有函数；`$toplevel` 为顶层语句合成函数
     pub functions: Vec<Function>,
     /// `main` 在 `functions` 中的下标（若有则 run 从它进入）
     pub main_index: Option<usize>,
     pub toplevel_index: usize,
+    pub struct_types: Vec<StructType>,
     /// MVP 未使用全局名表（顶层变量落在 `$toplevel` 局部槽）
     pub globals: Vec<String>,
 }

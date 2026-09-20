@@ -11,6 +11,8 @@ pub enum TypeExpr {
     String,
     Void,
     Array(Box<TypeExpr>),
+    /// 用户结构体类型名
+    Named(String),
 }
 
 impl TypeExpr {
@@ -45,6 +47,19 @@ pub enum UnOp {
 #[derive(Debug, Clone)]
 pub struct Ident {
     pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldDecl {
+    pub name: Ident,
+    pub ty: TypeExpr,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDecl {
+    pub name: Ident,
+    pub fields: Vec<StructFieldDecl>,
     pub span: Span,
 }
 
@@ -94,6 +109,16 @@ pub enum Expr {
         elems: Vec<Expr>,
         span: Span,
     },
+    Field {
+        base: Box<Expr>,
+        name: Ident,
+        span: Span,
+    },
+    StructLit {
+        name: Ident,
+        fields: Vec<(Ident, Expr)>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -107,7 +132,9 @@ impl Expr {
             | Expr::Binary { span, .. }
             | Expr::Call { span, .. }
             | Expr::Index { span, .. }
-            | Expr::Array { span, .. } => *span,
+            | Expr::Array { span, .. }
+            | Expr::Field { span, .. }
+            | Expr::StructLit { span, .. } => *span,
             Expr::Var { name } => name.span,
         }
     }
@@ -121,11 +148,13 @@ pub struct LetStmt {
     pub span: Span,
 }
 
+/// `name = value` 或 `name[index] = value` 或 `name.field = value`
 #[derive(Debug, Clone)]
 pub struct AssignStmt {
-    /// `name = value` 或 `name[index] = value`
     pub name: Ident,
     pub index: Option<Expr>,
+    /// 字段路径（按访问顺序）：`p.x` → ["x"]，`p.a.b` → ["a","b"]
+    pub fields: Vec<Ident>,
     pub value: Expr,
     pub span: Span,
 }
@@ -153,6 +182,14 @@ pub struct WhileStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct ForStmt {
+    pub var: Ident,
+    pub iter: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct ReturnStmt {
     pub value: Option<Expr>,
     pub span: Span,
@@ -170,6 +207,7 @@ pub enum Stmt {
     Assign(AssignStmt),
     If(IfStmt),
     While(WhileStmt),
+    For(ForStmt),
     Return(ReturnStmt),
     Expr(ExprStmt),
     Block(Block),
@@ -199,6 +237,7 @@ pub struct FunDecl {
 #[derive(Debug, Clone)]
 pub enum Item {
     Fun(FunDecl),
+    Struct(StructDecl),
     Stmt(Stmt),
 }
 
@@ -211,6 +250,13 @@ impl Program {
     pub fn functions(&self) -> impl Iterator<Item = &FunDecl> {
         self.items.iter().filter_map(|it| match it {
             Item::Fun(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    pub fn structs(&self) -> impl Iterator<Item = &StructDecl> {
+        self.items.iter().filter_map(|it| match it {
+            Item::Struct(s) => Some(s),
             _ => None,
         })
     }

@@ -165,3 +165,63 @@ fn short_circuit() {
     .unwrap();
     assert_eq!(out, vec!["false", "true"]);
 }
+
+#[test]
+fn struct_example() {
+    let out = run_source(include_str!("../examples/struct.lg")).unwrap();
+    assert_eq!(
+        out,
+        vec!["1", "30", "Point { x: 1, y: 30 }", "2", "1", "30", "4", "5"]
+    );
+}
+
+#[test]
+fn strings_example() {
+    let out = run_source(include_str!("../examples/strings.lg")).unwrap();
+    assert_eq!(out, vec!["5", "h", "ell", "42", "true", "hello!"]);
+}
+
+#[test]
+fn forin_example() {
+    let out = run_source(include_str!("../examples/forin.lg")).unwrap();
+    assert_eq!(out, vec!["[1, 2, 3, 4]", "4", "6", "3"]);
+}
+
+#[test]
+fn push_pop_runtime() {
+    let out = run_source(
+        r#"
+        fun main() -> void {
+            let a: int[] = [];
+            push(a, 7);
+            push(a, 8);
+            print(pop(a));
+            print(len(a));
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["8", "1"]);
+}
+
+#[test]
+fn str_at_oob() {
+    let err = run_source("print(str_at(\"ab\", 5));").unwrap_err();
+    assert!(err.contains("out of bounds"), "{err}");
+}
+
+#[test]
+fn for_in_non_array_rejected() {
+    let err = run_source("for x in 3 { print(x); }").unwrap_err();
+    assert!(err.contains("error"), "{err}");
+}
+
+#[test]
+fn struct_missing_field_rejected() {
+    let src = r#"
+    struct P { x: int, y: int }
+    fun main() -> void { let p = P { x: 1 }; }
+    "#;
+    let err = run_source(src).unwrap_err();
+    assert!(err.contains("error"), "{err}");
+}

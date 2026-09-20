@@ -1,0 +1,12 @@
+fun main() -> void {
+    let a: int[] = [1, 2, 3];
+    push(a, 4);
+    print(a);
+    print(pop(a));
+    let sum = 0;
+    for x in a {
+        sum = sum + x;
+    }
+    print(sum);
+    print(len(a));
+}

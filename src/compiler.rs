@@ -2,12 +2,13 @@
 //!
 //! 局部变量按声明顺序占用栈槽（函数参数在前）；`Call` 后接**函数索引**（不是 argc）。
 //! 控制流用 `Jump`/`JumpIfFalse`/`Loop` 相对偏移，编译时先占位再 `patch_jump`。
+//! `for x in arr` 脱糖为下标 `while`；结构体字面量按声明字段顺序求值后 `NewStruct`。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::*;
-use crate::bytecode::{Chunk, Function, Module, Op};
+use crate::bytecode::{Chunk, Function, Module, Op, StructType};
 use crate::token::Span;
 use crate::value::Value;
 
@@ -101,15 +102,14 @@ pub struct Compiler {
     function_index: HashMap<String, usize>,
     functions: Vec<FnCompiler>,
     void_fns: HashMap<String, ()>,
+    struct_index: HashMap<String, usize>,
+    struct_types: Vec<StructType>,
     current: usize,
 }
 
 impl Compiler {
     pub fn compile(program: &Program) -> Result<Module, CompileError> {
-        let mut function_index = HashMap::new();
-        let mut void_fns = HashMap::new();
-
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         for f in program.functions() {
             if !seen.insert(f.name.name.clone()) {
                 return Err(CompileError::new(
@@ -119,8 +119,26 @@ impl Compiler {
             }
         }
 
+        let mut struct_index = HashMap::new();
+        let mut struct_types = Vec::new();
+        for s in program.structs() {
+            if struct_index.contains_key(&s.name.name) {
+                return Err(CompileError::new(
+                    format!("duplicate struct `{}`", s.name.name),
+                    s.name.span,
+                ));
+            }
+            struct_index.insert(s.name.name.clone(), struct_types.len());
+            struct_types.push(StructType {
+                name: s.name.name.clone(),
+                fields: s.fields.iter().map(|f| f.name.name.clone()).collect(),
+            });
+        }
+
+        let mut function_index = HashMap::new();
+        let mut void_fns = HashMap::new();
+
         let mut fn_decls: Vec<&FunDecl> = program.functions().collect();
-        // 按源码顺序编号，保证 Call 索引稳定
         fn_decls.sort_by_key(|f| f.span.line);
 
         for (i, f) in fn_decls.iter().enumerate() {
@@ -132,6 +150,9 @@ impl Compiler {
         let toplevel_index = fn_decls.len();
         function_index.insert("$toplevel".to_string(), toplevel_index);
         void_fns.insert("$toplevel".to_string(), ());
+        // void 内建：print / push
+        void_fns.insert("print".to_string(), ());
+        void_fns.insert("push".to_string(), ());
 
         let mut functions: Vec<FnCompiler> = Vec::new();
         for f in &fn_decls {
@@ -147,6 +168,8 @@ impl Compiler {
             function_index,
             functions,
             void_fns,
+            struct_index,
+            struct_types,
             current: 0,
         };
 
@@ -166,6 +189,7 @@ impl Compiler {
         compiler.chunk().emit_op(Op::Return, 0);
 
         let void_set = compiler.void_fns.clone();
+        let struct_types = compiler.struct_types.clone();
         let mut out_functions = Vec::new();
         let mut main_index = None;
         for fc in compiler.functions {
@@ -186,6 +210,7 @@ impl Compiler {
             functions: out_functions,
             main_index,
             toplevel_index,
+            struct_types,
             globals: Vec::new(),
         })
     }
@@ -217,6 +242,7 @@ impl Compiler {
             Stmt::Assign(a) => self.compile_assign(a),
             Stmt::If(i) => self.compile_if(i),
             Stmt::While(w) => self.compile_while(w),
+            Stmt::For(f) => self.compile_for(f),
             Stmt::Return(r) => {
                 match &r.value {
                     None => self.chunk().emit_op(Op::Return, r.span.line),
@@ -228,10 +254,14 @@ impl Compiler {
                 Ok(())
             }
             Stmt::Expr(e) => {
-                // void 表达式语句不向栈上留值，故不必 Pop
                 let leaves_value = match &e.expr {
-                    Expr::Call { callee, .. } if callee.name == "print" => false,
-                    Expr::Call { callee, .. } if self.is_void_call_target(&callee.name) => false,
+                    Expr::Call { callee, .. }
+                        if callee.name == "print"
+                            || callee.name == "push"
+                            || self.is_void_call_target(&callee.name) =>
+                    {
+                        false
+                    }
                     _ => true,
                 };
                 self.compile_expr(&e.expr)?;
@@ -259,8 +289,54 @@ impl Compiler {
             self.chunk().emit_op(Op::GetLocal, line);
             self.chunk().emit_u16(slot, line);
             self.compile_expr(idx)?;
+            if a.fields.is_empty() {
+                self.compile_expr(&a.value)?;
+                self.chunk().emit_op(Op::SetIndex, line);
+                return Ok(());
+            }
+            // a[i].f... = v
+            self.chunk().emit_op(Op::GetIndex, line);
+            for (i, field) in a.fields.iter().enumerate() {
+                if i + 1 < a.fields.len() {
+                    let cidx = self
+                        .chunk()
+                        .add_constant(Value::Str(Rc::from(field.name.as_str())))?;
+                    self.chunk().emit_op(Op::GetField, line);
+                    self.chunk().emit_u16(cidx, line);
+                }
+            }
             self.compile_expr(&a.value)?;
-            self.chunk().emit_op(Op::SetIndex, line);
+            let last = a.fields.last().unwrap();
+            let cidx = self
+                .chunk()
+                .add_constant(Value::Str(Rc::from(last.name.as_str())))?;
+            self.chunk().emit_op(Op::SetField, line);
+            self.chunk().emit_u16(cidx, line);
+            return Ok(());
+        }
+
+        if !a.fields.is_empty() {
+            let slot = self.fn_mut().resolve_local(&a.name.name).ok_or_else(|| {
+                CompileError::new(format!("undefined variable `{}`", a.name.name), a.name.span)
+            })?;
+            self.chunk().emit_op(Op::GetLocal, line);
+            self.chunk().emit_u16(slot, line);
+            for (i, field) in a.fields.iter().enumerate() {
+                if i + 1 < a.fields.len() {
+                    let cidx = self
+                        .chunk()
+                        .add_constant(Value::Str(Rc::from(field.name.as_str())))?;
+                    self.chunk().emit_op(Op::GetField, line);
+                    self.chunk().emit_u16(cidx, line);
+                }
+            }
+            self.compile_expr(&a.value)?;
+            let last = a.fields.last().unwrap();
+            let cidx = self
+                .chunk()
+                .add_constant(Value::Str(Rc::from(last.name.as_str())))?;
+            self.chunk().emit_op(Op::SetField, line);
+            self.chunk().emit_u16(cidx, line);
             return Ok(());
         }
 
@@ -313,6 +389,65 @@ impl Compiler {
         self.chunk().emit_loop(loop_start, line)?;
         self.chunk().patch_jump(exit)?;
         self.chunk().emit_op(Op::Pop, line);
+        Ok(())
+    }
+
+    /// for x in arr { body } 脱糖为下标 while
+    fn compile_for(&mut self, f: &ForStmt) -> Result<(), CompileError> {
+        let line = f.span.line;
+        self.fn_mut().begin_scope();
+        self.compile_expr(&f.iter)?;
+        self.fn_mut().add_local("\0for_arr".into());
+        self.chunk().emit_const(Value::Int(0), line)?;
+        self.fn_mut().add_local("\0for_i".into());
+
+        let arr_slot = self
+            .fn_mut()
+            .resolve_local("\0for_arr")
+            .ok_or_else(|| CompileError::new("for-in temp missing", f.span))?;
+        let i_slot = self
+            .fn_mut()
+            .resolve_local("\0for_i")
+            .ok_or_else(|| CompileError::new("for-in temp missing", f.span))?;
+
+        let loop_start = self.chunk().code.len();
+        // cond: i < len(arr)
+        self.chunk().emit_op(Op::GetLocal, line);
+        self.chunk().emit_u16(i_slot, line);
+        self.chunk().emit_op(Op::GetLocal, line);
+        self.chunk().emit_u16(arr_slot, line);
+        self.chunk().emit_op(Op::Len, line);
+        self.chunk().emit_op(Op::Lt, line);
+        let exit = self.chunk().emit_jump(Op::JumpIfFalse, line);
+        self.chunk().emit_op(Op::Pop, line);
+
+        // x = arr[i]
+        self.chunk().emit_op(Op::GetLocal, line);
+        self.chunk().emit_u16(arr_slot, line);
+        self.chunk().emit_op(Op::GetLocal, line);
+        self.chunk().emit_u16(i_slot, line);
+        self.chunk().emit_op(Op::GetIndex, line);
+        self.fn_mut().begin_scope();
+        self.fn_mut().add_local(f.var.name.clone());
+        for stmt in &f.body.stmts {
+            self.compile_stmt(stmt)?;
+        }
+        self.fn_mut().end_scope(line);
+
+        // i = i + 1
+        self.chunk().emit_op(Op::GetLocal, line);
+        self.chunk().emit_u16(i_slot, line);
+        self.chunk().emit_const(Value::Int(1), line)?;
+        self.chunk().emit_op(Op::Add, line);
+        self.chunk().emit_op(Op::SetLocal, line);
+        self.chunk().emit_u16(i_slot, line);
+        self.chunk().emit_op(Op::Pop, line);
+
+        self.chunk().emit_loop(loop_start, line)?;
+        self.chunk().patch_jump(exit)?;
+        self.chunk().emit_op(Op::Pop, line);
+
+        self.fn_mut().end_scope(line); // pops for_i then for_arr
         Ok(())
     }
 
@@ -371,6 +506,38 @@ impl Compiler {
                 self.chunk().emit_u16(elems.len() as u16, span.line);
                 Ok(())
             }
+            Expr::Field { base, name, span } => {
+                self.compile_expr(base)?;
+                let cidx = self
+                    .chunk()
+                    .add_constant(Value::Str(Rc::from(name.name.as_str())))?;
+                self.chunk().emit_op(Op::GetField, span.line);
+                self.chunk().emit_u16(cidx, span.line);
+                Ok(())
+            }
+            Expr::StructLit { name, fields, span } => {
+                let idx = *self.struct_index.get(&name.name).ok_or_else(|| {
+                    CompileError::new(format!("unknown struct `{}`", name.name), name.span)
+                })?;
+                let decl = self.struct_types[idx].clone();
+                for fname in &decl.fields {
+                    let (_n, e) =
+                        fields
+                            .iter()
+                            .find(|(n, _)| &n.name == fname)
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    format!("missing field `{fname}` in `{}`", name.name),
+                                    name.span,
+                                )
+                            })?;
+                    self.compile_expr(e)?;
+                }
+                self.chunk().emit_op(Op::NewStruct, span.line);
+                self.chunk().emit_u16(idx as u16, span.line);
+                self.chunk().emit_u16(decl.fields.len() as u16, span.line);
+                Ok(())
+            }
         }
     }
 
@@ -424,21 +591,65 @@ impl Compiler {
 
     fn compile_call(&mut self, name: &str, args: &[Expr], span: Span) -> Result<(), CompileError> {
         let line = span.line;
-        if name == "print" {
-            if args.len() != 1 {
-                return Err(CompileError::new("`print` takes 1 argument", span));
+        match name {
+            "print" => {
+                if args.len() != 1 {
+                    return Err(CompileError::new("`print` takes 1 argument", span));
+                }
+                self.compile_expr(&args[0])?;
+                self.chunk().emit_op(Op::Print, line);
+                return Ok(());
             }
-            self.compile_expr(&args[0])?;
-            self.chunk().emit_op(Op::Print, line);
-            return Ok(());
-        }
-        if name == "len" {
-            if args.len() != 1 {
-                return Err(CompileError::new("`len` takes 1 argument", span));
+            "len" => {
+                if args.len() != 1 {
+                    return Err(CompileError::new("`len` takes 1 argument", span));
+                }
+                self.compile_expr(&args[0])?;
+                self.chunk().emit_op(Op::Len, line);
+                return Ok(());
             }
-            self.compile_expr(&args[0])?;
-            self.chunk().emit_op(Op::Len, line);
-            return Ok(());
+            "str_at" => {
+                for a in args {
+                    self.compile_expr(a)?;
+                }
+                self.chunk().emit_op(Op::StrAt, line);
+                return Ok(());
+            }
+            "str_sub" => {
+                for a in args {
+                    self.compile_expr(a)?;
+                }
+                self.chunk().emit_op(Op::StrSub, line);
+                return Ok(());
+            }
+            "to_string" => {
+                if args.len() != 1 {
+                    return Err(CompileError::new("`to_string` takes 1 argument", span));
+                }
+                self.compile_expr(&args[0])?;
+                self.chunk().emit_op(Op::ToString, line);
+                return Ok(());
+            }
+            "push" => {
+                for a in args {
+                    self.compile_expr(a)?;
+                }
+                self.chunk().emit_op(Op::Push, line);
+                return Ok(());
+            }
+            "pop" => {
+                if args.len() != 1 {
+                    return Err(CompileError::new("`pop` takes 1 argument", span));
+                }
+                self.compile_expr(&args[0])?;
+                self.chunk().emit_op(Op::ArrayPop, line);
+                return Ok(());
+            }
+            "input" => {
+                self.chunk().emit_op(Op::Input, line);
+                return Ok(());
+            }
+            _ => {}
         }
         let idx = *self
             .function_index

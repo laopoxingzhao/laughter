@@ -1,0 +1,20 @@
+struct Point {
+    x: int,
+    y: int,
+}
+
+fun main() -> void {
+    let p = Point { x: 1, y: 2 };
+    print(p.x);
+    p.y = 30;
+    print(p.y);
+    print(p);
+
+    let pts: Point[] = [p];
+    push(pts, Point { x: 4, y: 5 });
+    print(len(pts));
+    for q in pts {
+        print(q.x);
+        print(q.y);
+    }
+}

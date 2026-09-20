@@ -137,6 +137,10 @@ impl<'a> Lexer<'a> {
                 self.bump();
                 TokenKind::Semi
             }
+            b'.' => {
+                self.bump();
+                TokenKind::Dot
+            }
             b'+' => {
                 self.bump();
                 TokenKind::Plus
@@ -244,6 +248,9 @@ impl<'a> Lexer<'a> {
         let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
         let kind = match text {
             "fun" => TokenKind::Fun,
+            "struct" => TokenKind::Struct,
+            "for" => TokenKind::For,
+            "in" => TokenKind::In,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

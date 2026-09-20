@@ -25,11 +25,47 @@ impl Parser {
         while !self.check(&TokenKind::Eof) {
             if self.check(&TokenKind::Fun) {
                 items.push(Item::Fun(self.fun_decl()?));
+            } else if self.check(&TokenKind::Struct) {
+                items.push(Item::Struct(self.struct_decl()?));
             } else {
                 items.push(Item::Stmt(self.stmt()?));
             }
         }
         Ok(Program { items })
+    }
+
+    fn struct_decl(&mut self) -> Result<StructDecl, ParseError> {
+        let start = self.expect(TokenKind::Struct, "`struct`")?.span;
+        let name = self.expect_ident()?;
+        self.expect(TokenKind::LBrace, "`{` after struct name")?;
+        let mut fields = Vec::new();
+        while !self.check(&TokenKind::RBrace) {
+            let fname = self.expect_ident()?;
+            self.expect(TokenKind::Colon, "`:` after field name")?;
+            let ty = self.ty()?;
+            if ty.is_void() {
+                return Err(ParseError {
+                    message: "struct field cannot be `void`".into(),
+                    span: fname.span,
+                });
+            }
+            fields.push(StructFieldDecl { name: fname, ty });
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.expect(TokenKind::RBrace, "`}` after struct fields")?;
+        // 允许声明后写分号
+        if self.check(&TokenKind::Semi) {
+            self.advance();
+        }
+        Ok(StructDecl {
+            name,
+            fields,
+            span: start,
+        })
     }
 
     fn peek(&self) -> &Token {
@@ -46,6 +82,24 @@ impl Parser {
 
     fn check_ident(&self) -> bool {
         matches!(self.peek_kind(), TokenKind::Ident(_))
+    }
+
+    /// 当前 peek 为 `{` 时，判断是否像结构体字面量 `{ ident: ... }` 或 `{}`，
+    /// 以免把 `for x in arr { ... }` 的块当成字面量。
+    fn struct_lit_lookahead(&self) -> bool {
+        if self.pos + 1 >= self.tokens.len() {
+            return false;
+        }
+        match &self.tokens[self.pos + 1].kind {
+            TokenKind::RBrace => true,
+            TokenKind::Ident(_) => {
+                matches!(
+                    self.tokens.get(self.pos + 2).map(|t| &t.kind),
+                    Some(TokenKind::Colon)
+                )
+            }
+            _ => false,
+        }
     }
 
     fn advance(&mut self) -> Token {
@@ -86,12 +140,13 @@ impl Parser {
 
     fn ty(&mut self) -> Result<TypeExpr, ParseError> {
         let tok = self.advance();
-        let base = match tok.kind {
+        let base = match &tok.kind {
             TokenKind::TyInt => TypeExpr::Int,
             TokenKind::TyFloat => TypeExpr::Float,
             TokenKind::TyBool => TypeExpr::Bool,
             TokenKind::TyString => TypeExpr::String,
             TokenKind::TyVoid => TypeExpr::Void,
+            TokenKind::Ident(n) => TypeExpr::Named(n.clone()),
             _ => {
                 return Err(ParseError {
                     message: format!("expected a type, found {}", tok.kind),
@@ -174,6 +229,9 @@ impl Parser {
         if self.check(&TokenKind::While) {
             return Ok(Stmt::While(self.while_stmt()?));
         }
+        if self.check(&TokenKind::For) {
+            return Ok(Stmt::For(self.for_stmt()?));
+        }
         if self.check(&TokenKind::Return) {
             return Ok(Stmt::Return(self.return_stmt()?));
         }
@@ -181,7 +239,7 @@ impl Parser {
             return Ok(Stmt::Block(self.block()?));
         }
 
-        // 区分赋值语句与表达式语句（回溯保存位置）
+        // 赋值：name、name[i]、name.field(.field)*
         if self.check_ident() {
             let save = self.pos;
             let name = self.expect_ident()?;
@@ -192,6 +250,7 @@ impl Parser {
                 return Ok(Stmt::Assign(AssignStmt {
                     name,
                     index: None,
+                    fields: Vec::new(),
                     value,
                     span: semi.span,
                 }));
@@ -207,6 +266,26 @@ impl Parser {
                     return Ok(Stmt::Assign(AssignStmt {
                         name,
                         index: Some(index),
+                        fields: Vec::new(),
+                        value,
+                        span: semi.span,
+                    }));
+                }
+            }
+            if self.check(&TokenKind::Dot) {
+                let mut fields = Vec::new();
+                while self.check(&TokenKind::Dot) {
+                    self.advance();
+                    fields.push(self.expect_ident()?);
+                }
+                if self.check(&TokenKind::Assign) {
+                    self.advance();
+                    let value = self.expr()?;
+                    let semi = self.expect(TokenKind::Semi, "`;` after field assignment")?;
+                    return Ok(Stmt::Assign(AssignStmt {
+                        name,
+                        index: None,
+                        fields,
                         value,
                         span: semi.span,
                     }));
@@ -219,6 +298,20 @@ impl Parser {
         let span = expr.span();
         self.expect(TokenKind::Semi, "`;` after expression")?;
         Ok(Stmt::Expr(ExprStmt { expr, span }))
+    }
+
+    fn for_stmt(&mut self) -> Result<ForStmt, ParseError> {
+        let start = self.expect(TokenKind::For, "`for`")?.span;
+        let var = self.expect_ident()?;
+        self.expect(TokenKind::In, "`in` after for-loop variable")?;
+        let iter = self.expr()?;
+        let body = self.block()?;
+        Ok(ForStmt {
+            var,
+            iter,
+            body,
+            span: start,
+        })
     }
 
     fn let_stmt(&mut self) -> Result<LetStmt, ParseError> {
@@ -444,15 +537,30 @@ impl Parser {
 
     fn postfix(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.primary()?;
-        while self.check(&TokenKind::LBracket) {
-            self.advance();
-            let index = self.expr()?;
-            let end = self.expect(TokenKind::RBracket, "`]` after index")?;
-            expr = Expr::Index {
-                base: Box::new(expr),
-                index: Box::new(index),
-                span: end.span,
-            };
+        loop {
+            if self.check(&TokenKind::LBracket) {
+                self.advance();
+                let index = self.expr()?;
+                let end = self.expect(TokenKind::RBracket, "`]` after index")?;
+                expr = Expr::Index {
+                    base: Box::new(expr),
+                    index: Box::new(index),
+                    span: end.span,
+                };
+                continue;
+            }
+            if self.check(&TokenKind::Dot) {
+                self.advance();
+                let name = self.expect_ident()?;
+                let span = name.span;
+                expr = Expr::Field {
+                    base: Box::new(expr),
+                    name,
+                    span,
+                };
+                continue;
+            }
+            break;
         }
         Ok(expr)
     }
@@ -543,6 +651,29 @@ impl Parser {
                     Ok(Expr::Call {
                         callee: ident,
                         args,
+                        span: tok.span,
+                    })
+                } else if self.check(&TokenKind::LBrace) && self.struct_lit_lookahead() {
+                    // 结构体字面量：Name { f: e, ... }（Lookahead 避免与 for-in 的块冲突）
+                    self.advance();
+                    let mut fields = Vec::new();
+                    if !self.check(&TokenKind::RBrace) {
+                        loop {
+                            let fname = self.expect_ident()?;
+                            self.expect(TokenKind::Colon, "`:` in struct literal")?;
+                            let val = self.expr()?;
+                            fields.push((fname, val));
+                            if self.check(&TokenKind::Comma) {
+                                self.advance();
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RBrace, "`}` after struct fields")?;
+                    Ok(Expr::StructLit {
+                        name: ident,
+                        fields,
                         span: tok.span,
                     })
                 } else {

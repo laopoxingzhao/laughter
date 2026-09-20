@@ -1,4 +1,4 @@
-//! 语义检查：作用域、函数签名、表达式类型、返回路径。
+//! 语义检查：作用域、结构体、函数签名、表达式类型、返回路径。
 //! 通过后才允许进入编译阶段；错误格式为 `span` + message，CLI 再拼上文件名。
 
 use std::collections::HashMap;
@@ -19,9 +19,21 @@ struct FunInfo {
     ret: Type,
 }
 
+const BUILTINS: &[&str] = &[
+    "print",
+    "len",
+    "str_at",
+    "str_sub",
+    "to_string",
+    "push",
+    "pop",
+    "input",
+];
+
 pub struct Checker<'a> {
     program: &'a Program,
     functions: HashMap<String, FunInfo>,
+    structs: HashMap<String, Vec<(String, Type)>>,
     scopes: Vec<HashMap<String, Type>>,
     current_ret: Type,
     /// 检查顶层语句时为 true（此时禁止 `return`）
@@ -33,6 +45,7 @@ impl<'a> Checker<'a> {
         Self {
             program,
             functions: HashMap::new(),
+            structs: HashMap::new(),
             scopes: vec![HashMap::new()],
             current_ret: Type::Void,
             at_top_level: true,
@@ -40,11 +53,13 @@ impl<'a> Checker<'a> {
     }
 
     pub fn check(mut self) -> Result<(), CheckError> {
-        // 先登记全部函数签名，便于互相调用/递归
+        // 先登记结构体，再登记函数（签名里可能引用结构体）
+        for s in self.program.structs() {
+            self.declare_struct(s)?;
+        }
         for f in self.program.functions() {
             self.declare_function(f)?;
         }
-        // 内建 print/len 不可重定义——declare_function 中已拒绝
 
         for f in self.program.functions() {
             self.check_function(f)?;
@@ -59,10 +74,49 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    fn ty(&self, t: &TypeExpr, span: Span) -> Result<Type, CheckError> {
+        Type::from_ast(t, &self.structs).map_err(|m| CheckError { message: m, span })
+    }
+
+    fn declare_struct(&mut self, s: &StructDecl) -> Result<(), CheckError> {
+        if BUILTINS.contains(&s.name.name.as_str()) || self.functions.contains_key(&s.name.name) {
+            return Err(CheckError {
+                message: format!("`{}` is already used", s.name.name),
+                span: s.name.span,
+            });
+        }
+        if self.structs.contains_key(&s.name.name) {
+            return Err(CheckError {
+                message: format!("struct `{}` is already defined", s.name.name),
+                span: s.name.span,
+            });
+        }
+        let mut fields = Vec::new();
+        let mut seen = HashMap::new();
+        for f in &s.fields {
+            let ty = self.ty(&f.ty, f.name.span)?;
+            if seen.insert(f.name.name.clone(), ()).is_some() {
+                return Err(CheckError {
+                    message: format!("duplicate field `{}`", f.name.name),
+                    span: f.name.span,
+                });
+            }
+            fields.push((f.name.name.clone(), ty));
+        }
+        self.structs.insert(s.name.name.clone(), fields);
+        Ok(())
+    }
+
     fn declare_function(&mut self, f: &FunDecl) -> Result<(), CheckError> {
-        if f.name.name == "print" || f.name.name == "len" {
+        if BUILTINS.contains(&f.name.name.as_str()) {
             return Err(CheckError {
                 message: format!("`{}` is a builtin and cannot be redefined", f.name.name),
+                span: f.name.span,
+            });
+        }
+        if self.structs.contains_key(&f.name.name) {
+            return Err(CheckError {
+                message: format!("`{}` is already a struct", f.name.name),
                 span: f.name.span,
             });
         }
@@ -89,10 +143,7 @@ impl<'a> Checker<'a> {
         let mut params = Vec::new();
         let mut seen = HashMap::new();
         for p in &f.params {
-            let ty = Type::from_ast(&p.ty).map_err(|m| CheckError {
-                message: m,
-                span: p.name.span,
-            })?;
+            let ty = self.ty(&p.ty, p.name.span)?;
             if seen.insert(p.name.name.clone(), ()).is_some() {
                 return Err(CheckError {
                     message: format!("duplicate parameter `{}`", p.name.name),
@@ -101,35 +152,25 @@ impl<'a> Checker<'a> {
             }
             params.push(ty);
         }
-        let ret = Type::from_ast(&f.ret).map_err(|m| CheckError {
-            message: m,
-            span: f.span,
-        })?;
+        let ret = self.ty(&f.ret, f.span)?;
         self.functions
             .insert(f.name.name.clone(), FunInfo { params, ret });
         Ok(())
     }
 
     fn check_function(&mut self, f: &FunDecl) -> Result<(), CheckError> {
-        let ret = Type::from_ast(&f.ret).map_err(|m| CheckError {
-            message: m,
-            span: f.span,
-        })?;
+        let ret = self.ty(&f.ret, f.span)?;
         self.current_ret = ret;
         self.at_top_level = false;
         self.scopes = vec![HashMap::new()];
         for p in &f.params {
-            let ty = Type::from_ast(&p.ty).map_err(|m| CheckError {
-                message: m,
-                span: p.name.span,
-            })?;
+            let ty = self.ty(&p.ty, p.name.span)?;
             self.scopes
                 .last_mut()
                 .unwrap()
                 .insert(p.name.name.clone(), ty);
         }
         self.check_block(&f.body)?;
-        // 非 void：要求「必达 return」的保守分析（含 if/else 两支都返回；不把 while true 视作返回）。
         if !matches!(self.current_ret, Type::Void) && !block_always_returns(&f.body) {
             return Err(CheckError {
                 message: format!(
@@ -185,16 +226,28 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    fn field_type(&self, struct_ty: &str, field: &Ident) -> Result<Type, CheckError> {
+        let fields = self.structs.get(struct_ty).ok_or_else(|| CheckError {
+            message: format!("unknown struct `{struct_ty}`"),
+            span: field.span,
+        })?;
+        fields
+            .iter()
+            .find(|(n, _)| n == &field.name)
+            .map(|(_, t)| t.clone())
+            .ok_or_else(|| CheckError {
+                message: format!("struct `{struct_ty}` has no field `{}`", field.name),
+                span: field.span,
+            })
+    }
+
     fn check_stmt(&mut self, stmt: &Stmt) -> Result<(), CheckError> {
         match stmt {
             Stmt::Let(l) => {
                 let empty_array = matches!(&l.value, Expr::Array { elems, .. } if elems.is_empty());
                 let val_ty = if empty_array {
                     if let Some(t) = &l.ty {
-                        Type::from_ast(t).map_err(|m| CheckError {
-                            message: m,
-                            span: l.name.span,
-                        })?
+                        self.ty(t, l.name.span)?
                     } else {
                         return Err(CheckError {
                             message: "empty array literal `[]` requires a `let` type annotation such as `int[]`".into(),
@@ -205,10 +258,7 @@ impl<'a> Checker<'a> {
                     self.check_expr(&l.value)?
                 };
                 let declared = if let Some(t) = &l.ty {
-                    let t = Type::from_ast(t).map_err(|m| CheckError {
-                        message: m,
-                        span: l.name.span,
-                    })?;
+                    let t = self.ty(t, l.name.span)?;
                     if empty_array {
                         if !matches!(t, Type::Array(_)) {
                             return Err(CheckError {
@@ -241,46 +291,41 @@ impl<'a> Checker<'a> {
                 self.declare_var(&l.name.name, declared, l.name.span)?;
             }
             Stmt::Assign(a) => {
-                let cur = self.lookup_var(&a.name.name).ok_or_else(|| CheckError {
+                let mut cur = self.lookup_var(&a.name.name).ok_or_else(|| CheckError {
                     message: format!("undefined variable `{}`", a.name.name),
                     span: a.name.span,
                 })?;
                 let val_ty = self.check_expr(&a.value)?;
-                match &a.index {
-                    None => {
-                        if val_ty != cur {
-                            return Err(CheckError {
-                                message: format!(
-                                    "cannot assign `{val_ty}` to `{}` of type `{cur}`",
-                                    a.name.name
-                                ),
-                                span: a.span,
-                            });
-                        }
+                if let Some(idx) = &a.index {
+                    let idx_ty = self.check_expr(idx)?;
+                    if idx_ty != Type::Int {
+                        return Err(CheckError {
+                            message: format!("array index must be `int`, found `{idx_ty}`"),
+                            span: idx.span(),
+                        });
                     }
-                    Some(idx) => {
-                        let idx_ty = self.check_expr(idx)?;
-                        if idx_ty != Type::Int {
-                            return Err(CheckError {
-                                message: format!("array index must be `int`, found `{idx_ty}`"),
-                                span: idx.span(),
-                            });
-                        }
-                        let Type::Array(elem) = cur else {
-                            return Err(CheckError {
-                                message: format!("cannot index `{}`, not an array", a.name.name),
-                                span: a.name.span,
-                            });
-                        };
-                        if val_ty != *elem {
-                            return Err(CheckError {
-                                message: format!(
-                                    "cannot assign `{val_ty}` to array element of type `{elem}`"
-                                ),
-                                span: a.span,
-                            });
-                        }
-                    }
+                    let Type::Array(elem) = cur else {
+                        return Err(CheckError {
+                            message: format!("cannot index `{}`, not an array", a.name.name),
+                            span: a.name.span,
+                        });
+                    };
+                    cur = *elem;
+                }
+                for field in &a.fields {
+                    let Type::Struct(sname) = &cur else {
+                        return Err(CheckError {
+                            message: format!("cannot access field `{}` on `{cur}`", field.name),
+                            span: field.span,
+                        });
+                    };
+                    cur = self.field_type(sname, field)?;
+                }
+                if val_ty != cur {
+                    return Err(CheckError {
+                        message: format!("cannot assign `{val_ty}` to `{cur}`"),
+                        span: a.span,
+                    });
                 }
             }
             Stmt::If(i) => self.check_if(i)?,
@@ -293,6 +338,23 @@ impl<'a> Checker<'a> {
                     });
                 }
                 self.check_block(&w.body)?;
+            }
+            Stmt::For(f) => {
+                let it = self.check_expr(&f.iter)?;
+                let elem = match it {
+                    Type::Array(e) => *e,
+                    other => {
+                        return Err(CheckError {
+                            message: format!("for-in expects an array, found `{other}`"),
+                            span: f.iter.span(),
+                        })
+                    }
+                };
+                self.push_scope();
+                self.declare_var(&f.var.name, elem, f.var.span)?;
+                let r = self.check_stmts(&f.body.stmts);
+                self.pop_scope();
+                r?;
             }
             Stmt::Return(r) => {
                 if self.at_top_level {
@@ -500,41 +562,195 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Type::Array(Box::new(first)))
             }
+            Expr::Field { base, name, span } => {
+                let bt = self.check_expr(base)?;
+                match &bt {
+                    Type::Struct(sname) => self.field_type(sname, name),
+                    other => Err(CheckError {
+                        message: format!("cannot access field `{}` on `{other}`", name.name),
+                        span: *span,
+                    }),
+                }
+            }
+            Expr::StructLit { name, fields, span } => {
+                let sfields = self
+                    .structs
+                    .get(&name.name)
+                    .cloned()
+                    .ok_or_else(|| CheckError {
+                        message: format!("unknown struct `{}`", name.name),
+                        span: name.span,
+                    })?;
+                if fields.len() != sfields.len() {
+                    return Err(CheckError {
+                        message: format!(
+                            "struct `{}` expects {} field(s), found {}",
+                            name.name,
+                            sfields.len(),
+                            fields.len()
+                        ),
+                        span: *span,
+                    });
+                }
+                let mut seen = std::collections::HashSet::new();
+                for (fname, fexpr) in fields {
+                    if !seen.insert(fname.name.clone()) {
+                        return Err(CheckError {
+                            message: format!("duplicate field `{}`", fname.name),
+                            span: fname.span,
+                        });
+                    }
+                    let expected = sfields
+                        .iter()
+                        .find(|(n, _)| n == &fname.name)
+                        .map(|(_, t)| t.clone())
+                        .ok_or_else(|| CheckError {
+                            message: format!(
+                                "struct `{}` has no field `{}`",
+                                name.name, fname.name
+                            ),
+                            span: fname.span,
+                        })?;
+                    let got = self.check_expr(fexpr)?;
+                    if got != expected {
+                        return Err(CheckError {
+                            message: format!(
+                                "field `{}`: expected `{expected}`, found `{got}`",
+                                fname.name
+                            ),
+                            span: fexpr.span(),
+                        });
+                    }
+                }
+                Ok(Type::Struct(name.name.clone()))
+            }
         }
     }
 
     fn check_call(&mut self, name: &str, args: &[Expr], span: Span) -> Result<Type, CheckError> {
-        if name == "print" {
-            if args.len() != 1 {
-                return Err(CheckError {
-                    message: format!("`print` takes 1 argument, found {}", args.len()),
-                    span,
-                });
+        match name {
+            "print" => {
+                if args.len() != 1 {
+                    return Err(CheckError {
+                        message: format!("`print` takes 1 argument, found {}", args.len()),
+                        span,
+                    });
+                }
+                let t = self.check_expr(&args[0])?;
+                if !t.can_print() {
+                    return Err(CheckError {
+                        message: "cannot print `void`".into(),
+                        span,
+                    });
+                }
+                return Ok(Type::Void);
             }
-            let t = self.check_expr(&args[0])?;
-            if !t.can_print() {
-                return Err(CheckError {
-                    message: "cannot print `void`".into(),
-                    span,
-                });
+            "len" => {
+                if args.len() != 1 {
+                    return Err(CheckError {
+                        message: format!("`len` takes 1 argument, found {}", args.len()),
+                        span,
+                    });
+                }
+                let t = self.check_expr(&args[0])?;
+                if !matches!(t, Type::Array(_) | Type::Str) {
+                    return Err(CheckError {
+                        message: format!("`len` expects array or string, found `{t}`"),
+                        span,
+                    });
+                }
+                return Ok(Type::Int);
             }
-            return Ok(Type::Void);
-        }
-        if name == "len" {
-            if args.len() != 1 {
-                return Err(CheckError {
-                    message: format!("`len` takes 1 argument, found {}", args.len()),
-                    span,
-                });
+            "str_at" => {
+                if args.len() != 2 {
+                    return Err(CheckError {
+                        message: "`str_at` takes (string, int)".into(),
+                        span,
+                    });
+                }
+                self.expect_arg(&args[0], &Type::Str, "str_at", 1)?;
+                self.expect_arg(&args[1], &Type::Int, "str_at", 2)?;
+                return Ok(Type::Str);
             }
-            let t = self.check_expr(&args[0])?;
-            if !matches!(t, Type::Array(_)) {
-                return Err(CheckError {
-                    message: format!("`len` expects an array, found `{t}`"),
-                    span,
-                });
+            "str_sub" => {
+                if args.len() != 3 {
+                    return Err(CheckError {
+                        message: "`str_sub` takes (string, int, int)".into(),
+                        span,
+                    });
+                }
+                self.expect_arg(&args[0], &Type::Str, "str_sub", 1)?;
+                self.expect_arg(&args[1], &Type::Int, "str_sub", 2)?;
+                self.expect_arg(&args[2], &Type::Int, "str_sub", 3)?;
+                return Ok(Type::Str);
             }
-            return Ok(Type::Int);
+            "to_string" => {
+                if args.len() != 1 {
+                    return Err(CheckError {
+                        message: "`to_string` takes 1 argument".into(),
+                        span,
+                    });
+                }
+                let t = self.check_expr(&args[0])?;
+                if !t.can_print() {
+                    return Err(CheckError {
+                        message: "cannot stringify `void`".into(),
+                        span,
+                    });
+                }
+                return Ok(Type::Str);
+            }
+            "push" => {
+                if args.len() != 2 {
+                    return Err(CheckError {
+                        message: "`push` takes (array, value)".into(),
+                        span,
+                    });
+                }
+                let at = self.check_expr(&args[0])?;
+                let Type::Array(elem) = at else {
+                    return Err(CheckError {
+                        message: format!("`push` expects an array, found `{at}`"),
+                        span: args[0].span(),
+                    });
+                };
+                let vt = self.check_expr(&args[1])?;
+                if vt != *elem {
+                    return Err(CheckError {
+                        message: format!("`push` expects `{elem}`, found `{vt}`"),
+                        span: args[1].span(),
+                    });
+                }
+                return Ok(Type::Void);
+            }
+            "pop" => {
+                if args.len() != 1 {
+                    return Err(CheckError {
+                        message: "`pop` takes 1 array".into(),
+                        span,
+                    });
+                }
+                let at = self.check_expr(&args[0])?;
+                match at {
+                    Type::Array(elem) => return Ok(*elem),
+                    other => {
+                        return Err(CheckError {
+                            message: format!("`pop` expects an array, found `{other}`"),
+                            span: args[0].span(),
+                        })
+                    }
+                }
+            }
+            "input" => {
+                if !args.is_empty() {
+                    return Err(CheckError {
+                        message: "`input` takes no arguments".into(),
+                        span,
+                    });
+                }
+                return Ok(Type::Str);
+            }
+            _ => {}
         }
 
         let info = self
@@ -568,6 +784,25 @@ impl<'a> Checker<'a> {
             }
         }
         Ok(info.ret)
+    }
+
+    fn expect_arg(
+        &mut self,
+        arg: &Expr,
+        expected: &Type,
+        fname: &str,
+        idx: usize,
+    ) -> Result<(), CheckError> {
+        let at = self.check_expr(arg)?;
+        if &at != expected {
+            return Err(CheckError {
+                message: format!(
+                    "argument {idx} of `{fname}`: expected `{expected}`, found `{at}`"
+                ),
+                span: arg.span(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -665,5 +900,60 @@ mod tests {
     #[test]
     fn rejects_builtins_redef() {
         assert!(check("fun print(x: int) -> void { }").is_err());
+        assert!(check("fun push(a: int[], x: int) -> void { }").is_err());
+    }
+
+    #[test]
+    fn accepts_struct_and_for_in() {
+        let src = r#"
+        struct Point { x: int, y: int, }
+        fun main() -> void {
+            let p = Point { x: 1, y: 2 };
+            print(p.x);
+            p.y = 3;
+            let a: Point[] = [p];
+            for q in a {
+                print(q.y);
+            }
+            push(a, Point { x: 4, y: 5 });
+            print(len(a));
+        }
+        "#;
+        assert!(check(src).is_ok());
+    }
+
+    #[test]
+    fn rejects_struct_missing_field() {
+        let src = r#"
+        struct Point { x: int, y: int, }
+        let p = Point { x: 1 };
+        "#;
+        assert!(check(src).is_err());
+    }
+
+    #[test]
+    fn accepts_string_builtins() {
+        let src = r#"
+        fun main() -> void {
+            let s = "hello";
+            print(len(s));
+            print(str_at(s, 0));
+            print(str_sub(s, 1, 3));
+            print(to_string(42));
+        }
+        "#;
+        assert!(check(src).is_ok());
+    }
+
+    #[test]
+    fn accepts_push_pop() {
+        let src = r#"
+        fun main() -> void {
+            let a: int[] = [1];
+            push(a, 2);
+            print(pop(a));
+        }
+        "#;
+        assert!(check(src).is_ok());
     }
 }

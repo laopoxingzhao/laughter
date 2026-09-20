@@ -356,19 +356,206 @@ impl<'m> Vm<'m> {
                 }
                 Op::Len => {
                     let arr = self.pop(line)?;
-                    let Value::Array(h) = arr else {
-                        return Err(VmError {
-                            message: format!("`len` expects array, got {}", arr.type_name()),
-                            line,
-                        });
+                    let n = match &arr {
+                        Value::Array(h) => h.borrow().len() as i64,
+                        Value::Str(s) => s.chars().count() as i64,
+                        other => {
+                            return Err(VmError {
+                                message: format!(
+                                    "`len` expects array or string, got {}",
+                                    other.type_name()
+                                ),
+                                line,
+                            })
+                        }
                     };
-                    let n = h.borrow().len() as i64;
                     self.stack.push(Value::Int(n));
                     self.set_ip(ip + 1);
                 }
                 Op::Print => {
                     let v = self.pop(line)?;
                     output.push(v.display());
+                    self.set_ip(ip + 1);
+                }
+                Op::NewStruct => {
+                    let type_idx = self.read_u16(ip + 1)? as usize;
+                    let n = self.read_u16(ip + 3)? as usize;
+                    if self.stack.len() < n {
+                        return Err(VmError {
+                            message: "missing struct fields".into(),
+                            line,
+                        });
+                    }
+                    let st = self
+                        .module
+                        .struct_types
+                        .get(type_idx)
+                        .ok_or_else(|| VmError {
+                            message: "bad struct type index".into(),
+                            line,
+                        })?;
+                    let start = self.stack.len() - n;
+                    let items: Vec<Value> = self.stack.split_off(start);
+                    let fields: Vec<(String, Value)> =
+                        st.fields.iter().cloned().zip(items).collect();
+                    let handle = Rc::new(RefCell::new(crate::value::StructVal {
+                        name: st.name.clone(),
+                        fields,
+                    }));
+                    self.stack.push(Value::Struct(handle));
+                    self.set_ip(ip + 5);
+                }
+                Op::GetField => {
+                    let idx = self.read_u16(ip + 1)? as usize;
+                    let name = match self.module.functions[func].chunk.constants.get(idx) {
+                        Some(Value::Str(s)) => s.to_string(),
+                        _ => {
+                            return Err(VmError {
+                                message: "field name constant missing".into(),
+                                line,
+                            })
+                        }
+                    };
+                    let obj = self.pop(line)?;
+                    let Value::Struct(h) = obj else {
+                        return Err(VmError {
+                            message: format!("cannot get field on {}", obj.type_name()),
+                            line,
+                        });
+                    };
+                    let v = {
+                        let b = h.borrow();
+                        b.get(&name).cloned().ok_or_else(|| VmError {
+                            message: format!("no field `{name}`"),
+                            line,
+                        })?
+                    };
+                    self.stack.push(v);
+                    self.set_ip(ip + 3);
+                }
+                Op::SetField => {
+                    let idx = self.read_u16(ip + 1)? as usize;
+                    let name = match self.module.functions[func].chunk.constants.get(idx) {
+                        Some(Value::Str(s)) => s.to_string(),
+                        _ => {
+                            return Err(VmError {
+                                message: "field name constant missing".into(),
+                                line,
+                            })
+                        }
+                    };
+                    let val = self.pop(line)?;
+                    let obj = self.pop(line)?;
+                    let Value::Struct(h) = obj else {
+                        return Err(VmError {
+                            message: format!("cannot set field on {}", obj.type_name()),
+                            line,
+                        });
+                    };
+                    let ok = h.borrow_mut().set(&name, val);
+                    if !ok {
+                        return Err(VmError {
+                            message: format!("no field `{name}`"),
+                            line,
+                        });
+                    }
+                    self.set_ip(ip + 3);
+                }
+                Op::Push => {
+                    let val = self.pop(line)?;
+                    let arr = self.pop(line)?;
+                    let Value::Array(h) = arr else {
+                        return Err(VmError {
+                            message: format!("`push` expects array, got {}", arr.type_name()),
+                            line,
+                        });
+                    };
+                    h.borrow_mut().push(val);
+                    self.set_ip(ip + 1);
+                }
+                Op::ArrayPop => {
+                    let arr = self.pop(line)?;
+                    let Value::Array(h) = arr else {
+                        return Err(VmError {
+                            message: format!("`pop` expects array, got {}", arr.type_name()),
+                            line,
+                        });
+                    };
+                    let v = h.borrow_mut().pop().ok_or_else(|| VmError {
+                        message: "pop from empty array".into(),
+                        line,
+                    })?;
+                    self.stack.push(v);
+                    self.set_ip(ip + 1);
+                }
+                Op::Input => {
+                    use std::io::Write;
+                    let mut line_in = String::new();
+                    std::io::stdout().flush().ok();
+                    match std::io::stdin().read_line(&mut line_in) {
+                        Ok(_) => {
+                            while line_in.ends_with('\n') || line_in.ends_with('\r') {
+                                line_in.pop();
+                            }
+                            self.stack.push(Value::Str(Rc::from(line_in.as_str())));
+                        }
+                        Err(_) => self.stack.push(Value::Str(Rc::from(""))),
+                    }
+                    self.set_ip(ip + 1);
+                }
+                Op::StrAt => {
+                    let i = self.pop(line)?;
+                    let s = self.pop(line)?;
+                    let (Value::Str(s), Value::Int(i)) = (&s, &i) else {
+                        return Err(VmError {
+                            message: "str_at expects (string, int)".into(),
+                            line,
+                        });
+                    };
+                    let ch = s.chars().nth(*i as usize).ok_or_else(|| VmError {
+                        message: format!("str_at index {i} out of bounds"),
+                        line,
+                    })?;
+                    self.stack
+                        .push(Value::Str(Rc::from(ch.to_string().as_str())));
+                    self.set_ip(ip + 1);
+                }
+                Op::StrSub => {
+                    let n = self.pop(line)?;
+                    let start = self.pop(line)?;
+                    let s = self.pop(line)?;
+                    let (Value::Str(s), Value::Int(start), Value::Int(n)) = (&s, &start, &n) else {
+                        return Err(VmError {
+                            message: "str_sub expects (string, int, int)".into(),
+                            line,
+                        });
+                    };
+                    if *start < 0 || *n < 0 {
+                        return Err(VmError {
+                            message: "str_sub negative index".into(),
+                            line,
+                        });
+                    }
+                    let chars: Vec<char> = s.chars().collect();
+                    let start = *start as usize;
+                    let n = *n as usize;
+                    if start + n > chars.len() {
+                        return Err(VmError {
+                            message: format!(
+                                "str_sub out of bounds (len {}, start {start}, n {n})",
+                                chars.len()
+                            ),
+                            line,
+                        });
+                    }
+                    let sub: String = chars[start..start + n].iter().collect();
+                    self.stack.push(Value::Str(Rc::from(sub.as_str())));
+                    self.set_ip(ip + 1);
+                }
+                Op::ToString => {
+                    let v = self.pop(line)?;
+                    let s = v.display();
+                    self.stack.push(Value::Str(Rc::from(s.as_str())));
                     self.set_ip(ip + 1);
                 }
             }

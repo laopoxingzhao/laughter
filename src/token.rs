@@ -31,6 +31,9 @@ pub enum TokenKind {
 
     // 关键字
     Fun,
+    Struct,
+    For,
+    In,
     Let,
     If,
     Else,
@@ -55,6 +58,7 @@ pub enum TokenKind {
     Comma,
     Colon,
     Semi,
+    Dot,
     Arrow,
 
     // 运算符
@@ -85,6 +89,9 @@ impl fmt::Display for TokenKind {
             TokenKind::Float(n) => write!(f, "float `{n}`"),
             TokenKind::Str(s) => write!(f, "string `{s:?}`"),
             TokenKind::Fun => write!(f, "`fun`"),
+            TokenKind::Struct => write!(f, "`struct`"),
+            TokenKind::For => write!(f, "`for`"),
+            TokenKind::In => write!(f, "`in`"),
             TokenKind::Let => write!(f, "`let`"),
             TokenKind::If => write!(f, "`if`"),
             TokenKind::Else => write!(f, "`else`"),
@@ -106,6 +113,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Comma => write!(f, "`,`"),
             TokenKind::Colon => write!(f, "`:`"),
             TokenKind::Semi => write!(f, "`;`"),
+            TokenKind::Dot => write!(f, "`.`"),
             TokenKind::Arrow => write!(f, "`->`"),
             TokenKind::Plus => write!(f, "`+`"),
             TokenKind::Minus => write!(f, "`-`"),
