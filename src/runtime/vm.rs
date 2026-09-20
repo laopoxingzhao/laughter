@@ -1,4 +1,12 @@
-//! 栈式虚拟机。
+//! 栈式虚拟机：解释 `Module` 中的字节码。
+//!
+//! 帧约定：
+//! - 调用前参数已在栈顶；`base = stack.len() - argc`，局部槽为 `stack[base+slot]`。
+//! - `let` 直接把值压在帧上，不额外堆分配。
+//! - `Return`：void 截断到 `base`；非 void 弹出返回值，截断后再压回。
+//! - `JumpIfFalse/True` **peek** 条件不弹栈，分支代码必须自己 `Pop`。
+//!
+//! 另提供 `run_source`/`compile_source`：单文件字符串管线（**不支持 import**）。
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -7,18 +15,21 @@ use crate::codegen::chunk::Module;
 use crate::codegen::op::Op;
 use crate::runtime::value::{ArrayHandle, StructVal, Value};
 
+/// 运行时错误：消息 + 源行号（未知时为 0）。
 #[derive(Debug)]
 pub struct VmError {
     pub message: String,
     pub line: u32,
 }
 
+/// 调用帧：函数下标、指令指针、局部槽基址。
 struct Frame {
     func: usize,
     ip: usize,
     base: usize,
 }
 
+/// 栈机解释器。`max_depth` 限制递归深度，防止无限递归耗尽栈。
 pub struct Vm<'m> {
     module: &'m Module,
     stack: Vec<Value>,
@@ -36,6 +47,7 @@ impl<'m> Vm<'m> {
         }
     }
 
+    /// 从入口函数（有 `main` 则 main，否则 toplevel）开始执行，返回 `print` 的各行。
     pub fn run(&mut self) -> Result<Vec<String>, VmError> {
         let entry = self.module.main_index.unwrap_or(self.module.toplevel_index);
         self.push_frame(entry)?;
@@ -98,6 +110,7 @@ impl<'m> Vm<'m> {
         })
     }
 
+    /// 主解释循环：取指令 → 按操作码更新栈/帧 → 直到帧清空。
     fn loop_run(&mut self, out: &mut Vec<String>) -> Result<Vec<String>, VmError> {
         loop {
             let Some(fr) = self.frames.last() else {

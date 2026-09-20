@@ -1,7 +1,11 @@
 //! 栈机操作码。
+//!
+//! 枚举从 0 连续编号（`repr(u8)`），字节码里直接存 `op as u8`；
+//! `width()` 说明指令含操作数在内的总字节宽度，便于反汇编。
 
 use std::fmt;
 
+/// 字节码指令。未在 LANGUAGE 中出现的指令属于实现细节。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {

@@ -1,6 +1,9 @@
-//! 类型检查与 const 折叠。
+//! 类型检查与 `const` 常量折叠。
 //!
-//! 产出：通过后的 `HashMap` 常量表（供 codegen 直接 emit）。
+//! 职责：作用域、函数/方法签名、表达式类型、break/continue 位置、返回路径；
+//! 把顶层 `const` 折叠成 `Value`，供 codegen 直接 `Const` 字面量。
+//!
+//! 通过后返回常量表；失败时 `CheckError` 含 `Span`。
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -10,18 +13,21 @@ use crate::sema::types::Type;
 use crate::syntax::ast::*;
 use crate::syntax::token::Span;
 
+/// 语义错误：诊断信息 + 源位置。
 #[derive(Debug)]
 pub struct CheckError {
     pub message: String,
     pub span: Span,
 }
 
+/// 函数/方法签名（参数类型列表 + 返回类型）。
 #[derive(Clone)]
 pub struct FunInfo {
     pub params: Vec<Type>,
     pub ret: Type,
 }
 
+/// 内建函数名：不可被用户重定义。
 const BUILTINS: &[&str] = &[
     "print",
     "len",
@@ -60,7 +66,8 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// 检查程序，返回折叠后的 const 表。
+    /// 检查入口：先登记 struct/函数/const，再检查函数体与顶层语句。
+    /// 返回折叠后的 const 表，供编译器 `emit_const`。
     pub fn check(mut self) -> Result<HashMap<String, Value>, CheckError> {
         for s in self.program.structs() {
             self.declare_struct(s)?;
@@ -143,6 +150,7 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    /// 折叠常量表达式：仅字面量、已有 const、一元/二元运算、字符串 `+`。
     fn fold(&self, e: &Expr) -> Result<(Type, Value), CheckError> {
         match e {
             Expr::Int { value, .. } => Ok((Type::Int, Value::Int(*value))),
@@ -537,6 +545,7 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    /// 求表达式类型；方法调用区分「命名空间函数 / 静态 Type.m / 实例 m()」。
     fn expr_ty(&mut self, e: &Expr) -> Result<Type, CheckError> {
         match e {
             Expr::Int { .. } => Ok(Type::Int),

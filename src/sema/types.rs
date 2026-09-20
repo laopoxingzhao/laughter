@@ -1,10 +1,14 @@
 //! 语义类型。
+//!
+//! 与 AST 里的 `TypeExpr` 对应；`Named(n)` 解析为 `Type::Struct(n)`。
+//! 检查器用它判断兼容性；运行时 `Value` 与之大体一一对应（void 无运行时值）。
 
 use std::collections::HashMap;
 use std::fmt;
 
 use crate::syntax::ast::TypeExpr;
 
+/// 语义类型。数组元素类型嵌在 `Array` 里；结构体名指向 `structs` 表。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,

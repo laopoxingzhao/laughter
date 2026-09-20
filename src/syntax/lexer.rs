@@ -1,4 +1,9 @@
-//! 词法分析：源码 → Token 流。
+//! 词法分析：源码字符串 → Token 流。
+//!
+//! 职责：跳过空白与 `//` 行注释；识别关键字、标识符、数字、字符串与运算符；
+//! 为每个 Token 记录 `Span`（行、列），供后续阶段拼出 `file:line:col: error:`。
+//!
+//! 词法不理解语法结构，只保证「读得出一个个词」。
 
 use crate::syntax::token::{Span, Token, TokenKind};
 
@@ -8,6 +13,7 @@ pub struct LexError {
     pub span: Span,
 }
 
+/// 词法分析器：`src` 为源码字节，`pos`/`line`/`col` 跟踪当前位置。
 pub struct Lexer<'a> {
     src: &'a [u8],
     pos: usize,
@@ -25,6 +31,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// 把整个源文件切成 Token，最后附加一个 `Eof`。
     pub fn tokenize(mut self) -> Result<Vec<Token>, LexError> {
         let mut out = Vec::new();
         loop {
@@ -61,6 +68,7 @@ impl<'a> Lexer<'a> {
         Span::new(self.line, self.col)
     }
 
+    /// 跳过空白与 `//` 到行尾的注释（注释不进入 Token 流）。
     fn skip_trivia(&mut self) {
         loop {
             match self.peek() {
@@ -80,6 +88,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// 读取下一个 Token；先跳过 trivia，再按首字符分类。
     fn next_token(&mut self) -> Result<Token, LexError> {
         self.skip_trivia();
         let span = self.span();
@@ -236,6 +245,7 @@ impl<'a> Lexer<'a> {
         Ok(Token::new(kind, span))
     }
 
+    /// 标识符或关键字：最长匹配字母/数字/下划线，再查关键字表。
     fn ident_kw(&mut self, span: Span) -> Token {
         let start = self.pos;
         while let Some(c) = self.peek() {
@@ -273,6 +283,7 @@ impl<'a> Lexer<'a> {
         Token::new(kind, span)
     }
 
+    /// 数字字面量：整数或 `1.5` 形式的浮点（小数点后必须跟数字才算浮点）。
     fn number(&mut self, span: Span) -> Result<Token, LexError> {
         let start = self.pos;
         while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
@@ -302,6 +313,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// 字符串字面量：双引号包裹，支持 `\n \t \\ \"`；遇 EOF 未闭合则报错。
     fn string(&mut self, span: Span) -> Result<Token, LexError> {
         self.bump();
         let mut s = String::new();

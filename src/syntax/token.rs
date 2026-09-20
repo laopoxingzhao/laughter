@@ -1,7 +1,10 @@
-//! Token 与源位置。`Span` 用于 `file:line:col` 诊断。
+//! Token 与源位置。
+//!
+//! `Span`（行、列）贯穿前端与诊断格式；`TokenKind` 用枚举表示词法单元。
 
 use std::fmt;
 
+/// 源码中的位置（1-based 行号与列号）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub line: u32,

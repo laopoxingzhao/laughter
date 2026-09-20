@@ -1,4 +1,11 @@
-//! AST → 字节码。
+//! AST → 栈式字节码。
+//!
+//! 约定（教学实现，见 docs/ARCHITECTURE.md）：
+//! - 局部变量 = 当前函数帧内的栈槽；`let` 把值留在栈上并登记槽位。
+//! - `const` 已折叠，标识符直接 `Const` 字面量，不占槽。
+//! - 结构体值语义：字段赋值经 `SetLocalField` 或「拷贝→SetField→SetLocal」写回。
+//! - `for` 脱糖为下标 + while；`break`/`continue` 记录 Jump 占位，循环结束时回填。
+//! - 方法：`Type.name` 静态 Call；实例调用用 `CallMethod`（VM 按接收者类型名查表）。
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -9,6 +16,7 @@ use crate::runtime::value::Value;
 use crate::syntax::ast::*;
 use crate::syntax::token::Span;
 
+/// 编译期错误（带行列）。
 #[derive(Debug)]
 pub struct CompileError {
     pub message: String,
@@ -41,6 +49,7 @@ struct Local {
     depth: i32,
 }
 
+/// 一个函数的编译上下文：字节码缓冲 + 局部名→槽位 + 作用域深度。
 struct FnC {
     name: String,
     arity: u8,
@@ -86,11 +95,13 @@ impl FnC {
     }
 }
 
+/// 循环上下文：收集 break/continue 的 Jump 偏移，供循环出口/增量处回填。
 struct LoopP {
     breaks: Vec<usize>,
     continues: Vec<usize>,
 }
 
+/// 编译器：先给每个函数（含 `$toplevel`）建索引，再逐个编译函数体。
 pub struct Compiler {
     fidx: HashMap<String, usize>,
     fns: Vec<FnC>,
@@ -103,6 +114,7 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    /// 编译整个程序。`consts` 来自 sema 折叠；输出 `Module` 供 VM 执行/CLI 反汇编。
     pub fn compile(
         program: &Program,
         consts: HashMap<String, Value>,
@@ -297,6 +309,7 @@ impl Compiler {
         }
     }
 
+    /// 赋值：普通变量 / 数组元素 / 字段路径（含多层写回）。
     fn assign(&mut self, a: &AssignStmt) -> Result<(), CompileError> {
         let line = a.span.line;
         let slot = self

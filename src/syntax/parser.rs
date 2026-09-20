@@ -1,4 +1,10 @@
-//! 递归下降语法分析。
+//! 递归下降语法分析：Token 流 → AST。
+//!
+//! 顶层项目：`struct` / `const` / `fun` / `import` / 语句。
+//! 表达式优先级（低→高）：`||` → `&&` → 相等 → 比较 → `+-` → `*/%` → 一元 → 后缀。
+//!
+//! 消歧要点：`Ident {` 仅在后面是 `字段名:` 时才当作结构体字面量，
+//! 避免 `for x in arr { }` 把循环体吃掉。
 
 use crate::syntax::ast::*;
 use crate::syntax::token::{Span, Token, TokenKind};
@@ -9,6 +15,7 @@ pub struct ParseError {
     pub span: Span,
 }
 
+/// 解析器状态：`tokens` 为完整 Token 流，`pos` 为当前下标。
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
@@ -19,6 +26,7 @@ impl Parser {
         Self { tokens, pos: 0 }
     }
 
+    /// 解析整个程序；循环识别顶层 item，直到 `Eof`。
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut items = Vec::new();
         while !self.check(&TokenKind::Eof) {
@@ -93,6 +101,7 @@ impl Parser {
             && matches!(&self.tokens[self.pos + 2].kind, TokenKind::Colon)
     }
 
+    /// 解析类型：标量关键字或 `Named`（结构体名），可跟 `[]` 表示数组。
     fn ty(&mut self) -> Result<TypeExpr, ParseError> {
         let t = self.advance();
         let base = match &t.kind {
@@ -205,6 +214,7 @@ impl Parser {
         })
     }
 
+    /// `fun` 声明：支持 `fun name(...)` 与方法 `fun Type.name(self: Type, ...)`。
     fn fun_decl(&mut self) -> Result<FunDecl, ParseError> {
         let start = self.expect(TokenKind::Fun, "`fun`")?.span;
         let first = self.expect_ident()?;
@@ -254,6 +264,8 @@ impl Parser {
         Ok(Block { stmts, span: start })
     }
 
+    /// 语句：先尝试 let/if/while/for/break/continue/return/块，
+    /// 再区分赋值（`x=` / `a[i]=` / `p.f=`）与表达式语句。
     fn stmt(&mut self) -> Result<Stmt, ParseError> {
         if self.check(&TokenKind::Let) {
             return Ok(Stmt::Let(self.let_stmt()?));
@@ -427,6 +439,7 @@ impl Parser {
         })
     }
 
+    /// 表达式入口：允许 `a..b`（仅供 for-in 使用；语义阶段会再限制）。
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
         self.range_expr()
     }

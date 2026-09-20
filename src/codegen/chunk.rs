@@ -1,8 +1,12 @@
-//! 字节码 Chunk 与 Module。
+//! 字节码容器：`Chunk`（指令 + 常量 + 行号）与 `Module`（函数表）。
+//!
+//! 跳转：`emit_jump` 先占 2 字节偏移，`patch_to` / `patch_to_end` 回填；
+//! `Loop` 用负向相对偏移回到循环头。`disassemble` 供 CLI 与教学阅读。
 
 use crate::codegen::op::Op;
 use crate::runtime::value::Value;
 
+/// 一段函数字节码：`code` 为指令流，`constants` 为常量池，`lines[i]` 对应源行。
 #[derive(Debug, Clone)]
 pub struct Chunk {
     pub code: Vec<u8>,
@@ -175,6 +179,7 @@ pub struct StructType {
     pub fields: Vec<String>,
 }
 
+/// 编译后的函数：参数个数、局部槽数量、是否 void（决定 Return 是否压返回值）。
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
@@ -184,6 +189,7 @@ pub struct Function {
     pub chunk: Chunk,
 }
 
+/// 编译产物：全部函数 + 入口信息 + 结构体字段布局表。
 #[derive(Debug, Clone)]
 pub struct Module {
     pub functions: Vec<Function>,

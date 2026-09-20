@@ -1,7 +1,11 @@
-//! 抽象语法树。
+//! 抽象语法树（AST）。
+//!
+//! 解析器的输出、语义检查与字节码编译的输入。
+//! 尽量在节点上保留 `Span`，错误才能指回源码位置。
 
 use crate::syntax::token::Span;
 
+/// 源码里写出来的类型标注（尚未解析成语义类型 `Type`）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeExpr {
     Int,
@@ -93,6 +97,7 @@ pub struct FunDecl {
     pub span: Span,
 }
 
+/// 表达式节点。`Range` 仅应出现在 `for-in` 的迭代式中。
 #[derive(Debug, Clone)]
 pub enum Expr {
     Int {
@@ -191,7 +196,7 @@ pub struct LetStmt {
     pub span: Span,
 }
 
-/// `name`、`name[i]`、`name.f(.g)*` 赋值
+/// 赋值目标：`name`、`name[index]`，以及 `fields` 字段路径（可多层）。
 #[derive(Debug, Clone)]
 pub struct AssignStmt {
     pub name: Ident,
@@ -271,6 +276,7 @@ pub enum Item {
     Stmt(Stmt),
 }
 
+/// 一个 `.lg` 文件解析后的完整语法树。
 #[derive(Debug, Clone)]
 pub struct Program {
     pub items: Vec<Item>,

@@ -1,4 +1,11 @@
-//! 多文件模块加载：解析 import 并合并声明。
+//! 多文件模块加载：解析 `import`，合并顶层声明为单一 `Program`。
+//!
+//! - `import "rel.lg";`：扁平合入目标文件的 struct/const/fun。
+//! - `import "rel.lg" as ns;`：符号改名为 `ns.name`（方法名去掉 Type 前缀后挂到 ns 下）。
+//! - 只合并**声明**，不执行目标文件顶层语句。
+//! - 路径相对当前文件；禁止 `..`；用栈检测环状 import。
+//!
+//! CLI 的 `run`/`check`/`disasm` 走本模块；`run_source` 不走这里。
 
 use std::path::{Path, PathBuf};
 
@@ -104,6 +111,7 @@ fn load(path: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<Item>) -> Result<()
     Ok(())
 }
 
+/// 从文件路径编译：加载 import 图 → 检查 + const 折叠 → 字节码 Module。
 pub fn compile_path(path: &Path) -> Result<Module, String> {
     let mut stack = vec![];
     let mut items = vec![];
@@ -120,6 +128,7 @@ pub fn compile_path(path: &Path) -> Result<Module, String> {
         .map_err(|e| format!("{label}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 
+/// 编译并执行文件；诊断前缀为文件路径。
 pub fn run_path(path: &Path) -> Result<Vec<String>, String> {
     let module = compile_path(path)?;
     let mut vm = crate::runtime::vm::Vm::new(&module);

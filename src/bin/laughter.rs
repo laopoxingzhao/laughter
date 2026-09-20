@@ -1,4 +1,10 @@
-//! CLI：`laughter run|check|disasm <file.lg>`
+//! CLI 入口：`laughter run|check|disasm <file.lg>`。
+//!
+//! - `run`：检查 + 编译 + 执行（支持 import）
+//! - `check`：检查 + 编译，不执行
+//! - `disasm`：打印各函数字节码与常量表
+//!
+//! 语言契约：`docs/LANGUAGE.md`。
 
 use std::env;
 use std::process::ExitCode;

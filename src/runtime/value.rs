@@ -1,4 +1,8 @@
-//! 运行时值。结构体为值语义；数组/字符串为句柄。
+//! 运行时值。
+//!
+//! - 标量与 `string`/数组：数组是 `Rc<RefCell<Vec<Value>>>` 句柄（引用语义）。
+//! - 结构体：`Value::Struct(StructVal)` **内嵌值**，`Clone` 即字段拷贝（值语义）；
+//!   若字段本身是 string/数组，则该字段浅拷贝共享句柄。
 
 use std::cell::RefCell;
 use std::fmt;
@@ -6,6 +10,7 @@ use std::rc::Rc;
 
 pub type ArrayHandle = Rc<RefCell<Vec<Value>>>;
 
+/// 结构体实例：类型名 + 按声明顺序存放的字段。
 #[derive(Debug, Clone)]
 pub struct StructVal {
     pub name: String,
@@ -26,6 +31,7 @@ impl StructVal {
     }
 }
 
+/// 栈上的一个值。`display` 与 `print`/`to_string` 的显示形式一致。
 #[derive(Debug, Clone)]
 pub enum Value {
     Int(i64),
