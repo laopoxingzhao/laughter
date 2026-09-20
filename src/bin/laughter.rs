@@ -10,7 +10,7 @@
 //! | `disasm <file.lg\|file.lgb\|file.lgpack>` | 反汇编 |
 //! | `list <file.lgpack>` | 列出包内文件（类似 `jar tf`） |
 //!
-//! 文档：`docs/LANGUAGE.md`、`docs/BYTECODE.md`、`docs/LGPACK.md`
+//! 文档：`docs/LANGUAGE.md`、`docs/TOOLS.md`、`docs/TOOLS.md`
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -37,7 +37,7 @@ fn usage() -> ! {
          \x20 laughter exec <file.lg|file.lgb|file.lgpack>   执行\n\
          \x20 laughter disasm <上述任意>                     反汇编\n\
          \x20 laughter list <file.lgpack>                    列出包内条目\n\
-         \n文档: docs/LANGUAGE.md  docs/BYTECODE.md  docs/LGPACK.md\n"
+         \n文档: docs/LANGUAGE.md  docs/TOOLS.md  docs/TOOLS.md\n"
     );
     std::process::exit(2)
 }

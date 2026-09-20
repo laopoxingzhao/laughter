@@ -1,14 +1,18 @@
 # Laughter 文档索引
 
-| 文档 | 用途 |
-|------|------|
-| [LANGUAGE.md](LANGUAGE.md) | **语言契约（唯一权威）**：类型、语法、语义、内建、零成本约定 |
-| [GETTING_STARTED.md](GETTING_STARTED.md) | 构建、CLI、第一个程序、示例列表 |
-| [CODE_TOUR.md](CODE_TOUR.md) | **给初学者的代码导读**（栈、跳转、值语义、如何用 disasm） |
-| [TYPES_GLOSSARY.md](TYPES_GLOSSARY.md) | **类型/英文标识符中文对照**（读源码时查） |
-| [BYTECODE.md](BYTECODE.md) | **`.lgb` 字节码文件**：compile / exec 与格式说明 |
-| [LGPACK.md](LGPACK.md) | **`.lgpack` 类 JAR 包**：pack / exec / list |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 编译管线、`src/` 分层、实现契约 |
-| [compose/spec/](compose/spec/README.md) | Compose 设计/交付记录（历史，不覆盖 LANGUAGE.md） |
+Laughter 是一门**教学向编译语言**（`.lg`）。本文档树按「先学会用 → 再懂语言 → 再懂编译器」排列。
 
-根目录 [README.md](../README.md) 为仓库入口，只保留摘要与链接。
+**适合谁**：想学编译原理、但英文和基础都不厚的同学。每篇都尽量少用行话；出现的英文词在 [GLOSSARY.md](GLOSSARY.md) 都有中文对照。
+
+| 顺序 | 文档 | 你将学会 |
+|------|------|----------|
+| 1 | [GETTING_STARTED.md](GETTING_STARTED.md) | 安装、跑通第一个程序、常用命令 |
+| 2 | [LANGUAGE.md](LANGUAGE.md) | 语言怎么写：类型、变量、循环、函数、结构体… |
+| 3 | [COMPILE_PRIMER.md](COMPILE_PRIMER.md) | **编译原理从零讲**：程序如何变成可执行步骤 |
+| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | 源码目录怎么对应编译各阶段 |
+| 5 | [TOOLS.md](TOOLS.md) | 字节码 `.lgb`、类 JAR 包 `.lgpack`、全部 CLI |
+| — | [GLOSSARY.md](GLOSSARY.md) | 英文标识符 / 编译术语 ↔ 中文 |
+
+根目录 [README.md](../README.md) 只是仓库门面，细节以本文档树为准。
+
+> 语言规则的「权威定义」在 [LANGUAGE.md](LANGUAGE.md)；若文档与代码不一致，以代码 + 测试为准，并欢迎改文档。

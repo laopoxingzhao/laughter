@@ -11,7 +11,7 @@
 //! ```
 //!
 //! **建议阅读**
-//! 1. `docs/CODE_TOUR.md` → `docs/LANGUAGE.md` → `docs/BYTECODE.md`
+//! 1. `docs/COMPILE_PRIMER.md` → `docs/LANGUAGE.md` → `docs/TOOLS.md`
 //! 2. `src/syntax/` → `sema/` → `codegen/` → `runtime/`
 //!
 //! **常用 API**

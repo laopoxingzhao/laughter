@@ -1,173 +1,331 @@
-# Laughter 语言契约（v2）
+# Laughter 语言手册
 
-> **权威文档**：本文件定义 Laughter 的类型、语法与语义。实现与测试须与之一致。  
-> 入门见 [GETTING_STARTED.md](GETTING_STARTED.md)，实现见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+面向初学者的完整语言说明。想先跑起来请看 [GETTING_STARTED.md](GETTING_STARTED.md)；  
+想理解「为什么这样设计、代码如何执行」请看 [COMPILE_PRIMER.md](COMPILE_PRIMER.md)。
 
-教学向编译语言。宿主 Rust；源文件 `.lg`；管线：**Lexer → Parser → Checker → Bytecode → VM**。
+---
 
-## 1. 类型
-
-| 类型 | 说明 |
-|------|------|
-| `int` | 64 位有符号整数 |
-| `float` | 64 位浮点 |
-| `bool` | `true` / `false` |
-| `string` | 不可变字节/字符串；`+` 拼接 |
-| `T[]` | 同构数组；**引用语义**（共享句柄） |
-| `struct` | 用户结构体；**值语义**（赋值/传参字段拷贝） |
-| `void` | 仅作函数返回类型 |
-
-- 无隐式 `int`/`float` 转换。
-- 结构体字段可为标量、`string`、`T[]` 或其它结构体；`string`/数组字段在结构体拷贝时为**浅拷贝**。
-
-## 2. 程序结构
+## 0. 一分钟认识
 
 ```text
-program := item*
-item    := struct_decl | const_decl | import | fun_decl | stmt
+// 这是注释，程序不会执行它
+fun main() -> void {
+    let name = "Laughter";
+    print("hello, " + name);
+
+    let nums: int[] = [1, 2, 3];
+    for n in nums {
+        print(n);
+    }
+}
 ```
 
-- **入口**：若存在 `fun main() -> void`，`run` 从 `main` 进入（先完成模块声明合并）；否则执行顶层语句。
-- **import**（仅顶层；通过文件路径运行，如 `laughter run main.lg`）：
-  - `import "rel/path.lg";` — 将目标文件中顶层 `struct`/`const`/`fun` **扁平合入**（不执行目标顶层语句）。
-  - `import "rel/path.lg" as ns;` — 合入并把符号命名为 `ns.name`（结构体类型名亦为 `ns.Name`）。
-  - 路径相对当前文件；**禁止** `..`；环状 import 报错。
-  - 同名冲突报错。
-  - 库 API `run_source`/`compile_source` **不支持** import（单文件字符串）。
-- 顶层语句在 `main` 存在时**不执行**（仅声明合并进模块）；无 `main` 时执行顶层语句。
+- 源文件后缀：`.lg`
+- 花括号 `{}` 包住代码块
+- 大多数语句以 `;` 结束
+- 可选 `fun main() -> void` 作为程序入口；没有 `main` 则从文件顶部语句顺序执行
 
-## 3. 声明
+---
 
-### struct
+## 1. 类型（数据分哪几种）
+
+| 写法 | 中文名 | 例子 | 说明 |
+|------|--------|------|------|
+| `int` | 整数 | `1`, `-3`, `42` | 64 位整数 |
+| `float` | 浮点数 | `1.5`, `3.14` | 可带小数 |
+| `bool` | 布尔 | `true`, `false` | 真/假，常用于条件 |
+| `string` | 字符串 | `"hi"` | 文本 |
+| `T[]` | 数组 | `[1,2,3]` | 一串同类型元素 |
+| `struct` | 结构体 | 见下文 | 把多个字段捆成一种类型 |
+| `void` | 无返回值 | 函数「不返回东西」 | 只出现在函数返回类型位置 |
+
+### 重要规则：不能混用 int 与 float
+
+```text
+let x = 1 + 2.5;   // 错误：不能将 int 与 float 相加
+```
+
+必须自己转换语义（当前语言未提供隐式转换；教学版也不提供 `to_int` 等）。
+
+### 数组是「遥控器」，结构体是「复印件」
+
+- **数组**：`let b = a;` 后，改 `b[0]` 也会影响 `a[0]`（同一份数据）。
+- **结构体**：`let b = a;` 是**整份字段拷贝**；再改 `b.x` 不会影响 `a.x`。
+
+---
+
+## 2. 变量与常量
+
+### let：声明变量
+
+```text
+let x: int = 1;    // 写明类型
+let y = 2;         // 不写类型时，取右边值的类型
+x = x + y;         // 赋值
+```
+
+### const：编译期就定死的常量
+
+```text
+const N: int = 10;
+const M: int = N * 2 + 1;   // 编译期就算成 21
+print(M);
+```
+
+- 只能写在**文件顶层**
+- 必须写类型
+- 右边只能是「编译期就能算出来」的式子（字面量、其它 const、加减乘除等）
+- 不能对 `N = 1` 这样赋值
+
+---
+
+## 3. 运算符
+
+| 类别 | 符号 | 例子 |
+|------|------|------|
+| 算术 | `+ - * / %` | `1 + 2`，`7 / 2`，`7 % 2`（取余） |
+| 比较 | `== != < <= > >=` | `a < b` 结果是 `bool` |
+| 逻辑 | `&& \|\| !` | `if x > 0 && x < 10` |
+| 字符串 | `+` | `"a" + "b"` → `"ab"` |
+
+- 逻辑运算有**短路**：`false && f()` 不会调用 `f`
+- 整数除法向零取整；**除数为 0** 会在运行时报错
+
+---
+
+## 4. 条件与循环
+
+### if
+
+```text
+if n < 0 {
+    print("负数");
+} else if n == 0 {
+    print("零");
+} else {
+    print("正数");
+}
+```
+
+条件必须是 `bool`。
+
+### while
+
+```text
+let i = 0;
+while i < 3 {
+    print(i);
+    i = i + 1;
+}
+```
+
+### 遍历数组 / 数字范围
+
+```text
+let a: int[] = [10, 20];
+for x in a {
+    print(x);
+}
+
+for i in 0..3 {    // 半开区间：0,1,2（不包含 3）
+    print(i);
+}
+```
+
+### break 与 continue
+
+```text
+for i in 0..10 {
+    if i == 2 { continue; }  // 跳过本次，进入下一轮
+    if i == 5 { break; }     // 整个循环结束
+    print(i);
+}
+```
+
+---
+
+## 5. 函数
+
+```text
+fun add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fun main() -> void {
+    print(add(1, 2));   // 3
+}
+```
+
+- 参数类型、返回类型都要写全  
+- `-> void` 表示不返回值，函数里用 `return;` 或不写 return（最后一行）  
+- 非 void 函数：**所有路径**都要有 `return`（否则编译错误）  
+- 可以递归（函数调用自己），如 `examples/fib.lg`  
+- 没有嵌套函数、没有「把函数当值传来传去」  
+
+### 入口 main
+
+```text
+fun main() -> void {
+    // 程序从这里开始（若文件里存在 main）
+}
+```
+
+有 `main` 时：文件顶层的其它语句**不会执行**（只合并声明）。  
+没有 `main` 时：从文件第一条顶层语句执行到最后。
+
+---
+
+## 6. 字符串与内建函数
+
+语言自带这些**内建**（不能自己重名定义）：
+
+| 函数 | 作用 | 例子 |
+|------|------|------|
+| `print(v)` | 打印并换行（CLI 输出一行） | `print(1);` |
+| `len(s或数组)` | 长度 | `len("ab")==2`，`len([1,2])==2` |
+| `str_at(s, i)` | 第 i 个字符（从 0 起） | `str_at("hi",0)==\"h\"` |
+| `str_sub(s, start, n)` | 从 start 起取 n 个字符 | `str_sub("hello",1,3)==\"ell\"` |
+| `to_string(v)` | 转成字符串 | `to_string(42)==\"42\"` |
+| `push(数组, 值)` | 追加到数组末尾 | `push(a, 4);` |
+| `pop(数组)` | 弹出并返回末元素 | `print(pop(a));` |
+| `input()` | 从键盘/标准输入读一行 | `let s = input();` |
+
+数组越界、`pop` 空数组、除零等 → **运行时错误**（程序中断并打印中文信息）。
+
+---
+
+## 7. 数组
+
+```text
+let a: int[] = [1, 2, 3];
+print(a[0]);          // 读
+a[1] = 20;            // 写
+push(a, 4);           // 变成 [1,20,3,4]
+print(len(a));        // 4
+
+let empty: int[] = [];   // 空数组必须写类型标注
+```
+
+- 元素类型必须一致（不能 `[1, \"a\"]`）  
+- 下标从 `0` 开始  
+
+---
+
+## 8. 结构体
+
+把多个数据捆成一种新类型。
 
 ```text
 struct Point {
     x: int,
     y: int,
 }
-```
 
-字段名唯一；类型非 `void`。
-
-### const
-
-```text
-const N: int = 10;
-const M: int = N * 2 + 1;
-```
-
-- 仅顶层；必须标注类型。
-- 初始化式为**常量表达式**：字面量、已定义 `const`、一元 `-`/`!`、二元算术/比较/逻辑、字符串 `+`。
-- 不允许函数调用、变量、数组/结构体字面量。
-- 使用处编译为字面量；不可赋值。
-- 标量类型：`int` `float` `bool` `string`。
-
-### fun / 方法
-
-```text
-fun add(a: int, b: int) -> int { return a + b; }
-
-fun Point.sum(self: Point) -> int {
-    return self.x + self.y;
+fun main() -> void {
+    let p = Point { x: 1, y: 2 };
+    print(p.x);       // 1
+    p.y = 30;         // 改字段
+    print(p.y);       // 30
 }
 ```
 
-- 参数与返回类型必须写全；允许递归；无嵌套函数/函数值。
-- 方法：`fun Type.name(self: Type, ...)`；首参类型必须是 `Type`。
-- 调用：`p.sum()` 或 `Point.sum(p)`；接收者**按值**传递。
-- 方法名与全局函数名不得冲突。
-- `main` 必须为零参数且返回 `void`。
-- 非 `void` 函数须保证所有路径 `return`（保守分析：if/else 双支 return 等）。
+- 字面量必须**写全所有字段**（顺序可乱）  
+- 结构体赋值/传参是**拷贝**（见第 1 节）  
 
-## 4. 语句
+### 方法（写在结构体上的函数）
 
 ```text
-let x: int = 1;
-let y = 2;              // 类型取自初始化式
-x = y + 1;
-a[i] = v;
-p.x = v;
-p.a.b = v;              // 多层字段：沿值路径写回
-a[i].x = v;
+struct Point {
+    x: int,
+    y: int,
+}
 
-if cond { } else if cond { } else { }
-while cond { }
-for e in arr { }
-for i in start..end { } // int，半开区间 [start, end)
-break;
-continue;
-return expr; | return;
-{ /* 块作用域 */ }
-expr;                   // 表达式语句
+fun Point.sum(self: Point) -> int {
+    // self 就是「这个点自己」，按值传入
+    return self.x + self.y;
+}
+
+fun main() -> void {
+    let p = Point { x: 1, y: 2 };
+    print(p.sum());        // 3
+    print(Point.sum(p));   // 也可以这样写，含义相同
+}
 ```
 
-- `if`/`while` 条件必须为 `bool`。
-- `break`/`continue` 仅循环内。
-- 空数组：`let a: int[] = [];`；无标注的 `[]` 为错误。
+---
 
-## 5. 表达式
+## 9. 多文件（import）
 
-| 优先级（低→高） | 运算 |
-|----------------|------|
-| 1 | `\|\|` |
-| 2 | `&&` |
-| 3 | `==` `!=` |
-| 4 | `<` `<=` `>` `>=` |
-| 5 | `+` `-` |
-| 6 | `*` `/` `%` |
-| 7 | 一元 `-` `!` |
-| 8 | 后缀 `a[i]`、`p.f`、`f(...)`、`recv.m(...)` |
+把代码拆到多个 `.lg` 文件。
 
-- 字面量：`123`、`1.5`、`true`/`false`、`"str"`（`\n \t \\ \"`）。
-- 数组：`[e, ...]`；结构体：`Point { x: 1, y: 2 }`（字段须齐全，顺序任意）。
-- `&&`/`||` 短路。
-- 范围 `a..b` **仅**作为 `for-in` 迭代式。
-- 整数除法向零截断；除零为运行时错误。
-
-## 6. 内建函数（不可重定义）
-
-| 函数 | 说明 |
-|------|------|
-| `print(v)` | 打印一行显示形式（CLI 输出） |
-| `len(s_or_arr)` | 字符串字符数 / 数组长度 |
-| `str_at(s, i)` | 第 i 个字符（从 0）；越界运行时错 |
-| `str_sub(s, start, n)` | 子串；越界运行时错 |
-| `to_string(v)` | 与 `print` 相同的显示字符串 |
-| `push(arr, v)` | 追加 |
-| `pop(arr)` | 弹出末元素；空数组运行时错 |
-| `input()` | 读一行 stdin，去掉行尾 `\n`/`\r` |
-
-显示形式：int/float（整数值浮点显示一位小数）/bool/string 原文；数组 `[a, b]`；结构体 `Name { f: v, ... }`。
-
-## 7. 零成本约定
-
-| 机制 | 约定 |
-|------|------|
-| `const` | 编译期折叠为字面量指令 |
-| 结构体 | 栈上值，无 Rc 壳；拷贝赋值 |
-| 字段写 | 槽内修改或拷贝-改-写回 |
-| 方法 | 静态直呼 / 按类型名查表 |
-| `for` | 脱糖为 while，无堆上迭代器 |
-
-## 8. 诊断
-
-- 编译期：`file:line:col: 错误: message`（message 为中文）
-- 运行时：`file:line: 运行时错误: message`（无行号时省略行号段）
-
-## 9. CLI
+**math.lg**
 
 ```text
-laughter run <file.lg>                         # 检查 + 编译 + 执行源码
-laughter check <file.lg>                       # 检查 + 编译，不执行
-laughter compile <file.lg> [-o out.lgb]        # 编译为磁盘字节码 .lgb
-laughter pack <file.lg> [-o out.lgpack]        # 打包为类 JAR 的 .lgpack
-laughter exec <file.lg|file.lgb|file.lgpack>   # 执行
-laughter disasm <file.lg|file.lgb|file.lgpack> # 反汇编 + 常量表
-laughter list <file.lgpack>                    # 列出包内条目
+fun add(a: int, b: int) -> int {
+    return a + b;
+}
 ```
 
-`.lgb` 见 [BYTECODE.md](BYTECODE.md)；`.lgpack`（类 JAR）见 [LGPACK.md](LGPACK.md)。
+**main.lg**
 
-## 10. 非目标
+```text
+import "math.lg";
+// 或带命名空间：import "math.lg" as math;  然后写 math.add(1,2)
 
-闭包、泛型、enum/match、impl 块、方法重载、包管理、GC、LLVM/JIT、REPL、隐式数值转换、`break` 带值、标签循环。
+fun main() -> void {
+    print(add(2, 3));
+}
+```
+
+- 路径相对**当前文件**所在目录  
+- 不能写 `..`（防止跑到项目外）  
+- 只合并函数/结构体/常量等**声明**，不会执行被导入文件的顶层语句  
+- 带 `import` 的程序必须用**文件路径**运行：`cargo run -- run main.lg`  
+
+---
+
+## 10. 注释
+
+```text
+// 单行注释，到本行结束
+```
+
+---
+
+## 11. 错误信息怎么读
+
+```text
+main.lg:3:5: 错误: 未定义的变量 `x`
+```
+
+| 片段 | 含义 |
+|------|------|
+| `main.lg` | 哪个文件 |
+| `3` | 第几行 |
+| `5` | 第几列 |
+| `错误` | 编译期错误（运行前发现） |
+| 后面文字 | 具体原因 |
+
+运行时则是 `运行时错误:`，例如除零、下标越界。
+
+---
+
+## 12. 目前还没有的功能（暂不支持）
+
+- 枚举 / match、泛型、闭包（函数当值）、impl 块与 `this`  
+- 模块系统以外的包管理、隐式 int↔float  
+- 完整字符串库、文件与网络 IO（除 `input`）  
+
+这些不是「你写错了」，而是教学版刻意保留的边界。
+
+---
+
+## 13. 下一步
+
+| 你想… | 请看 |
+|-------|------|
+| 把语言跑起来 | [GETTING_STARTED.md](GETTING_STARTED.md) |
+| 懂编译器在干什么 | [COMPILE_PRIMER.md](COMPILE_PRIMER.md) |
+| 在源码里找实现 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 字节码与打包 | [TOOLS.md](TOOLS.md) |
+| 英文单词查中文 | [GLOSSARY.md](GLOSSARY.md) |

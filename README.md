@@ -1,40 +1,32 @@
 # Laughter
 
-教学向编译语言：静态类型、C/Rust 风语法，编译为栈式字节码并由 VM 执行。
+教学向编译语言：静态类型、C/Rust 风语法，编译为字节码并由栈式虚拟机执行。
 
 | | |
 |--|--|
-| 语言契约 | [`docs/LANGUAGE.md`](docs/LANGUAGE.md) |
+| 文档入口 | [`docs/README.md`](docs/README.md) |
 | 快速开始 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) |
-| 代码导读（小白向） | [`docs/CODE_TOUR.md`](docs/CODE_TOUR.md) |
-| 类型英文对照 | [`docs/TYPES_GLOSSARY.md`](docs/TYPES_GLOSSARY.md) |
-| 字节码文件 .lgb | [`docs/BYTECODE.md`](docs/BYTECODE.md) |
-| 类 JAR 包 .lgpack | [`docs/LGPACK.md`](docs/LGPACK.md) |
-| 架构 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| 文档索引 | [`docs/README.md`](docs/README.md) |
+| 语言手册 | [`docs/LANGUAGE.md`](docs/LANGUAGE.md) |
+| 编译原理（小白） | [`docs/COMPILE_PRIMER.md`](docs/COMPILE_PRIMER.md) |
 | 源文件后缀 | `.lg` |
 | 仓库 | https://github.com/laopoxingzhao/laughter |
 | 许可证 | [MIT](LICENSE) |
-| CI | GitHub Actions：`cargo fmt --check` + `cargo test` + `cargo build --release` |
 
-## 试用
+## 试一下
 
 ```bash
 cargo test
 cargo run -- run examples/hello.lg
-cargo run -- compile examples/fib.lg   # 生成 .lgb 字节码
-cargo run -- pack examples/fib.lg      # 打包 .lgpack（类似 jar）
-cargo run -- exec examples/fib.lgpack
-cargo run -- disasm examples/zca.lg
+cargo run -- run examples/fib.lg
+cargo run -- disasm examples/hello.lg
 ```
 
-## 一分钟了解
+## 语言速览
 
 - 类型：`int` `float` `bool` `string` `T[]` `struct` `void`
-- `let` / `const`（编译期折叠）/ 值语义结构体 / 方法
-- `if` / `while` / `for-in` / `for i in a..b` / `break` / `continue`
-- `import "f.lg"` 或 `import "f.lg" as ns`
+- `let` / `const` / 函数 / 方法 / 数组 / `import`
+- 控制流：`if` / `while` / `for-in` / `for i in a..b` / `break` / `continue`
 - 内建：`print` `len` `str_at` `str_sub` `to_string` `push` `pop` `input`
-- 零成本约定：常量折叠、栈上结构体、循环脱糖、方法直呼
+- 交付：字节码 `.lgb`、类 JAR 包 `.lgpack`（见 [`docs/TOOLS.md`](docs/TOOLS.md)）
 
-示例在 `examples/`，细节以 **LANGUAGE.md** 为准。
+细节以 **`docs/`** 目录为准；示例在 `examples/`。
