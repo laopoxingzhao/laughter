@@ -7,6 +7,7 @@
 | 语言契约 | [`docs/LANGUAGE.md`](docs/LANGUAGE.md) |
 | 快速开始 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) |
 | 代码导读（小白向） | [`docs/CODE_TOUR.md`](docs/CODE_TOUR.md) |
+| 类型英文对照 | [`docs/TYPES_GLOSSARY.md`](docs/TYPES_GLOSSARY.md) |
 | 架构 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 文档索引 | [`docs/README.md`](docs/README.md) |
 | 源文件后缀 | `.lg` |

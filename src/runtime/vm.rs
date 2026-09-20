@@ -30,21 +30,37 @@ use crate::codegen::chunk::Module;
 use crate::codegen::op::Op;
 use crate::runtime::value::{ArrayHandle, StructVal, Value};
 
-/// 运行时错误：消息 + 源行号（未知时为 0）。
+/// 运行时错误（程序跑到一半出错）。
+/// `message`：错误说明；`line`：源码行号，未知时为 0。
 #[derive(Debug)]
 pub struct VmError {
     pub message: String,
     pub line: u32,
 }
 
-/// 调用帧：函数下标、指令指针、局部槽基址。
+/// 一次函数调用的「现场」记录（调用帧）。
+///
+/// | 字段 | 中文 | 含义 |
+/// |------|------|------|
+/// | `func` | 函数编号 | 正在执行 `module.functions` 里的哪一个 |
+/// | `ip` | 指令指针 | 下一条字节码的下标（instruction pointer） |
+/// | `base` | 帧基址 | 本函数局部变量在全局栈上的起始下标 |
+///
+/// 局部槽 `n` 对应全局栈下标 `base + n`。
 struct Frame {
     func: usize,
     ip: usize,
     base: usize,
 }
 
-/// 栈机解释器。`max_depth` 限制递归深度，防止无限递归耗尽栈。
+/// 栈式虚拟机。
+///
+/// | 字段 | 中文 |
+/// |------|------|
+/// | `module` | 待执行的编译结果（函数表等） |
+/// | `stack` | 操作数栈：指令压入/弹出 `Value` |
+/// | `frames` | 调用帧栈（每次调用压一层） |
+/// | `max_depth` | 最大递归深度，防止无限递归把主机栈打爆 |
 pub struct Vm<'m> {
     module: &'m Module,
     stack: Vec<Value>,

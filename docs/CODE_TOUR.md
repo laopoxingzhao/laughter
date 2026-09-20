@@ -1,7 +1,8 @@
 # 代码导读（给编译原理小白）
 
 按「一个 `.lg` 文件从打开到打印结果」的顺序读代码即可。  
-契约见 [LANGUAGE.md](LANGUAGE.md)，模块地图见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+契约见 [LANGUAGE.md](LANGUAGE.md)，模块地图见 [ARCHITECTURE.md](ARCHITECTURE.md)。  
+英文类型名看不懂时，查 [TYPES_GLOSSARY.md](TYPES_GLOSSARY.md)。
 
 ## 0. 背景词汇
 

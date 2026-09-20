@@ -19,7 +19,10 @@ use std::rc::Rc;
 
 pub type ArrayHandle = Rc<RefCell<Vec<Value>>>;
 
-/// 结构体实例：类型名 + 按声明顺序存放的字段。
+/// 结构体实例（值语义：整份拷贝，不是遥控器）。
+///
+/// - `name`：结构体类型名，例如 `"Point"`（方法查找时用它拼 `Point.sum`）
+/// - `fields`：字段表 `(字段名, 字段值)`，顺序与声明一致
 #[derive(Debug, Clone)]
 pub struct StructVal {
     pub name: String,
@@ -40,14 +43,29 @@ impl StructVal {
     }
 }
 
-/// 栈上的一个值。`display` 与 `print`/`to_string` 的显示形式一致。
+/// 栈上运行时的一个值。`display()` 的结果就是 `print` 打出来的内容。
+///
+/// | 变体 | 中文 | 语义 |
+/// |------|------|------|
+/// | `Int(i64)` | 64 位整数 | 直接拷贝 |
+/// | `Float(f64)` | 64 位浮点 | 直接拷贝 |
+/// | `Bool(bool)` | 布尔 | 直接拷贝 |
+/// | `Str(Rc<str>)` | 字符串 | 共享只读数据 |
+/// | `Array(Rc<RefCell<Vec<..>>>)` | 数组 | **引用**：多个变量可改同一数组 |
+/// | `Struct(StructVal)` | 结构体 | **值**：赋值时字段拷贝 |
 #[derive(Debug, Clone)]
 pub enum Value {
+    /// 整数
     Int(i64),
+    /// 浮点数
     Float(f64),
+    /// 真/假
     Bool(bool),
+    /// 字符串（引用计数，只读共享）
     Str(Rc<str>),
+    /// 数组句柄（遥控器）
     Array(ArrayHandle),
+    /// 结构体值（复印件）
     Struct(StructVal),
 }
 

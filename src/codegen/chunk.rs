@@ -6,7 +6,13 @@
 use crate::codegen::op::Op;
 use crate::runtime::value::Value;
 
-/// 一段函数字节码：`code` 为指令流，`constants` 为常量池，`lines[i]` 对应源行。
+/// 一个函数的字节码 + 常量表 + 行号表。
+///
+/// | 字段 | 中文 | 含义 |
+/// |------|------|------|
+/// | `code` | 指令字节流 | 操作码和操作数连在一起存 |
+/// | `constants` | 常量池 | 字符串、数字等，用下标引用 |
+/// | `lines` | 行号表 | `lines[i]` ≈ 第 i 个字节对应的源码行，用于报错 |
 #[derive(Debug, Clone)]
 pub struct Chunk {
     pub code: Vec<u8>,
@@ -179,7 +185,15 @@ pub struct StructType {
     pub fields: Vec<String>,
 }
 
-/// 编译后的函数：参数个数、局部槽数量、是否 void（决定 Return 是否压返回值）。
+/// 编译后的一个函数。
+///
+/// | 字段 | 中文 |
+/// |------|------|
+/// | `name` | 函数名（方法为 `Point.sum` 这种全名） |
+/// | `arity` | 参数个数 |
+/// | `locals` | 局部槽数量（编译期统计） |
+/// | `is_void` | 是否无返回值（影响 Return 是否压栈） |
+/// | `chunk` | 这个函数自己的字节码 |
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
@@ -189,7 +203,14 @@ pub struct Function {
     pub chunk: Chunk,
 }
 
-/// 编译产物：全部函数 + 入口信息 + 结构体字段布局表。
+/// 整个程序编译完的结果。
+///
+/// | 字段 | 中文 |
+/// |------|------|
+/// | `functions` | 所有函数（含 `$toplevel` 顶层合成函数） |
+/// | `main_index` | `main` 在列表中的下标（没有 main 则为 None） |
+/// | `toplevel_index` | 顶层语句所在函数的下标 |
+/// | `struct_types` | 结构体字段布局（建结构体时按此填字段） |
 #[derive(Debug, Clone)]
 pub struct Module {
     pub functions: Vec<Function>,

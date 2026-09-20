@@ -8,7 +8,19 @@ use std::fmt;
 
 use crate::syntax::ast::TypeExpr;
 
-/// 语义类型。数组元素类型嵌在 `Array` 里；结构体名指向 `structs` 表。
+/// 语义类型：检查器内部使用，比源码里的 `TypeExpr` 更「具体」。
+///
+/// | 变体 | 中文 | 源码写法 |
+/// |------|------|----------|
+/// | `Int` | 整数 | `int` |
+/// | `Float` | 浮点 | `float` |
+/// | `Bool` | 布尔 | `bool` |
+/// | `Str` | 字符串 | `string` |
+/// | `Void` | 无返回值 | `void` |
+/// | `Array(Box<Type>)` | 数组 | `int[]`（元素类型在 Box 里） |
+/// | `Struct(名字)` | 结构体 | `Point` |
+///
+/// 和 `TypeExpr` 的关系：解析得到 `TypeExpr` → 检查时通过结构体表解析成 `Type`。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,
@@ -17,6 +29,7 @@ pub enum Type {
     Str,
     Void,
     Array(Box<Type>),
+    /// 结构体类型名
     Struct(String),
 }
 

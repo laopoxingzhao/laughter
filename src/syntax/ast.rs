@@ -23,6 +23,15 @@ impl TypeExpr {
     }
 }
 
+/// 二元运算符（左右各有一个操作数）。
+///
+/// | 变体 | 中文 | 源码 |
+/// |------|------|------|
+/// | `Add` | 加 | `+`（数字相加或字符串拼接） |
+/// | `Sub` `Mul` `Div` `Rem` | 减 乘 除 取余 | `-` `*` `/` `%` |
+/// | `Eq` `Ne` | 等于 / 不等于 | `==` `!=` |
+/// | `Lt` `Le` `Gt` `Ge` | 小于 / ≤ / 大于 / ≥ | `<` `<=` `>` `>=` |
+/// | `And` `Or` | 逻辑与 / 或（短路） | `&&` `\|\|` |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
     Add,
@@ -40,24 +49,34 @@ pub enum BinOp {
     Or,
 }
 
+/// 一元运算符（只有一个操作数）。
+///
+/// | 变体 | 中文 | 源码 |
+/// |------|------|------|
+/// | `Neg` | 取负 | `-x` |
+/// | `Not` | 逻辑非 | `!flag` |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
     Neg,
     Not,
 }
 
+/// 名字 + 位置。`name` 是标识符文本，`span` 用于报错定位。
 #[derive(Debug, Clone)]
 pub struct Ident {
     pub name: String,
     pub span: Span,
 }
 
+/// 结构体里的一个字段：`name` 字段名，`ty` 字段类型。
 #[derive(Debug, Clone)]
 pub struct FieldDecl {
     pub name: Ident,
     pub ty: TypeExpr,
 }
 
+/// `struct 名 { 字段... }` 的完整声明。
+/// `fields` 按源码顺序；编译时也按这个顺序在栈上排布。
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     pub name: Ident,
@@ -65,6 +84,8 @@ pub struct StructDecl {
     pub span: Span,
 }
 
+/// `const 名: 类型 = 表达式;`
+/// `value` 在语义阶段会被「折叠」成具体数值。
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub name: Ident,
@@ -73,6 +94,9 @@ pub struct ConstDecl {
     pub span: Span,
 }
 
+/// `import "路径" [as 别名];`
+/// - 无 `alias`：扁平合入，符号用原名
+/// - 有 `alias`：变成 `别名.原名`
 #[derive(Debug, Clone)]
 pub struct ImportItem {
     pub path: String,
@@ -80,12 +104,20 @@ pub struct ImportItem {
     pub span: Span,
 }
 
+/// 函数的一个参数：`name` 参数名，`ty` 参数类型。
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: Ident,
     pub ty: TypeExpr,
 }
 
+/// 函数声明（普通函数或结构体方法）。
+///
+/// - `name`：函数名（方法时只是方法名，如 `sum`）
+/// - `on_type`：`Some("Point")` 表示这是 `Point` 的方法；普通函数为 `None`
+/// - `params`：参数列表；方法的第一个参数是接收者 `self`
+/// - `ret`：返回类型（可为 `void`）
+/// - `body`：函数体语句块
 #[derive(Debug, Clone)]
 pub struct FunDecl {
     pub name: Ident,
@@ -188,6 +220,8 @@ impl Expr {
     }
 }
 
+/// `let 名字 [: 类型] = 值;`
+/// `ty` 为 `None` 时，类型完全由 `value` 推出。
 #[derive(Debug, Clone)]
 pub struct LetStmt {
     pub name: Ident,
@@ -196,7 +230,12 @@ pub struct LetStmt {
     pub span: Span,
 }
 
-/// 赋值目标：`name`、`name[index]`，以及 `fields` 字段路径（可多层）。
+/// 赋值语句：可以是 `x = v`、`a[i] = v`、`p.f = v` 或 `p.a.b = v`。
+///
+/// - `name`：被赋值的变量
+/// - `index`：若有，表示先做数组下标
+/// - `fields`：字段路径（可多层）
+/// - `value`：等号右边的表达式
 #[derive(Debug, Clone)]
 pub struct AssignStmt {
     pub name: Ident,
@@ -206,20 +245,31 @@ pub struct AssignStmt {
     pub span: Span,
 }
 
+/// `if 条件 { 块 } [else 分支]`
 #[derive(Debug, Clone)]
 pub struct IfStmt {
+    /// 条件，类型必须是 `bool`
     pub cond: Expr,
+    /// 条件为真时执行
     pub then_block: Block,
+    /// `else` 或 `else if`（见 `ElseBranch`）
     pub else_branch: Option<ElseBranch>,
     pub span: Span,
 }
 
+/// `if` 的否则分支。
+///
+/// | 变体 | 中文 |
+/// |------|------|
+/// | `Block` | `else { ... }` |
+/// | `If` | `else if ...`（嵌套的 if） |
 #[derive(Debug, Clone)]
 pub enum ElseBranch {
     Block(Block),
     If(Box<IfStmt>),
 }
 
+/// `while 条件 { 块 }`：条件为真就一直循环。
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub cond: Expr,
@@ -227,26 +277,45 @@ pub struct WhileStmt {
     pub span: Span,
 }
 
+/// `for 变量 in 迭代式 { 块 }`
+///
+/// `iter` 只能是：
+/// - 数组表达式：每次取出一个元素
+/// - `start..end`：整数半开区间
 #[derive(Debug, Clone)]
 pub struct ForStmt {
+    /// 循环变量名（作用域仅在循环体内）
     pub var: Ident,
     pub iter: Expr,
     pub body: Block,
     pub span: Span,
 }
 
+/// `return;` 或 `return 表达式;`
 #[derive(Debug, Clone)]
 pub struct ReturnStmt {
     pub value: Option<Expr>,
     pub span: Span,
 }
 
+/// 表达式语句：只为了副作用，例如 `print(1);`
 #[derive(Debug, Clone)]
 pub struct ExprStmt {
     pub expr: Expr,
     pub span: Span,
 }
 
+/// 所有语句的总和。
+///
+/// | 变体 | 中文 |
+/// |------|------|
+/// | `Let` | 变量声明 |
+/// | `Assign` | 赋值 |
+/// | `If` / `While` / `For` | 条件与循环 |
+/// | `Break` / `Continue` | 循环控制 |
+/// | `Return` | 函数返回 |
+/// | `Expr` | 表达式语句 |
+/// | `Block` | 独立代码块 |
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Let(LetStmt),
@@ -261,12 +330,22 @@ pub enum Stmt {
     Block(Block),
 }
 
+/// `{ 语句... }`：进入时新开一层作用域，离开时该层声明的变量失效。
 #[derive(Debug, Clone)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
     pub span: Span,
 }
 
+/// 顶层条目：一个 `.lg` 文件里的「大块」。
+///
+/// | 变体 | 中文 |
+/// |------|------|
+/// | `Struct` | 结构体声明 |
+/// | `Const` | 常量声明 |
+/// | `Fun` | 函数/方法 |
+/// | `Import` | 导入其它文件 |
+/// | `Stmt` | 顶层语句（无 `main` 时才会执行） |
 #[derive(Debug, Clone)]
 pub enum Item {
     Struct(StructDecl),

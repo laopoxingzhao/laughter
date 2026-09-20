@@ -10,7 +10,28 @@
 
 use std::fmt;
 
-/// 字节码指令。未在 LANGUAGE 中出现的指令属于实现细节。
+/// 字节码指令（英文名 → 中文见下）。
+///
+/// | 变体 | 中文 | 操作数 |
+/// |------|------|--------|
+/// | `Const` | 压入常量池第 n 项 | u16 |
+/// | `True` / `False` | 压入真 / 假 | 无 |
+/// | `Pop` | 弹出栈顶 | 无 |
+/// | `GetLocal` / `SetLocal` | 读 / 写局部槽 | u16 槽号 |
+/// | `SetLocalField` | 修改槽内结构体的某字段 | 槽号 + 字段名常量 |
+/// | `Add`…`Rem` | 算术 | 无（弹两个算一个） |
+/// | `Neg` / `Not` | 取负 / 逻辑非 | 无 |
+/// | `Eq`…`Ge` | 比较，结果为 bool | 无 |
+/// | `Jump` | 无条件跳转 | u16 向前偏移 |
+/// | `JumpIfFalse` / `JumpIfTrue` | 条件跳转（只查看栈顶） | u16 |
+/// | `Loop` | 跳回循环头 | u16 向后偏移 |
+/// | `Call` | 调用第 n 个函数 | u16 函数下标 |
+/// | `CallMethod` | 按方法名调用 | 名字常量 + 参数个数 |
+/// | `Return` | 返回 | 无 |
+/// | `NewArray` / `GetIndex` / `SetIndex` | 数组建/读/写 | NewArray 带个数 |
+/// | `NewStruct` / `GetField` / `SetField` | 结构体建/读/写字段 | |
+/// | `Len` `Print` `Push` `ArrayPop` | 长度/打印/追加/弹出 | 无 |
+/// | `Input` `StrAt` `StrSub` `ToString` | 输入与字符串工具 | 无 |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
