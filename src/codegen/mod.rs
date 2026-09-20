@@ -7,5 +7,5 @@ pub mod lgpack;
 pub mod op;
 
 pub use chunk::{Chunk, Function, Module, StructType};
-pub use compile::Compiler;
+pub use compile::{CompileError, Compiler};
 pub use op::Op;

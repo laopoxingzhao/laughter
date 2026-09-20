@@ -28,21 +28,36 @@ src/
     token.rs          TokenKind、Span
     lexer.rs          词法
     ast.rs            抽象语法树
-    parser.rs         递归下降
+    parser/
+      mod.rs          Parser 状态与工具
+      decl.rs         import / struct / const / fun
+      stmt.rs         语句
+      expr.rs         表达式（优先级）
   sema/
     mod.rs
     types.rs          语义类型 Type
-    check.rs          类型检查 + const 常量折叠
+    check/
+      mod.rs          Checker 入口、声明与作用域
+      fold.rs         const 折叠
+      stmt.rs         语句/函数检查
+      expr.rs         表达式与调用
   codegen/
     mod.rs
     op.rs             操作码
     chunk.rs          Chunk / Function / Module / 反汇编
-    compile.rs        AST → 字节码
-    lgb.rs            .lgb 文件编解码（compile/exec）
+    compile/
+      mod.rs          Compiler 总控
+      stmt.rs         语句/循环/赋值
+      expr.rs         表达式与调用
+    lgb.rs            .lgb 文件编解码
+    lgpack.rs         .lgpack 类 JAR 包
   runtime/
     mod.rs
     value.rs          Value（含值语义 StructVal）
-    vm.rs             栈机 + run_source / compile_source
+    vm/
+      mod.rs          Vm、帧、错误
+      exec.rs         主解释循环
+      source.rs       run_source 单文件 API
   module_loader.rs    import 加载与符号合并
   bin/laughter.rs     CLI
 ```
