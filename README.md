@@ -7,7 +7,7 @@
 | 源文件后缀 | `.lg` |
 | 宿主实现 | Rust + Cargo |
 | 仓库 | https://github.com/laopoxingzhao/laughter |
-| 设计文档 | [`docs/compose/spec/laughter-mvp.md`](docs/compose/spec/laughter-mvp.md) |
+| 设计文档 | [`docs/compose/spec/laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md) |
 
 ## 构建与测试
 
@@ -94,4 +94,4 @@ fun main() -> void {
 
 ## 本期不做
 
-结构体/闭包/模块 import、隐式数值转换、完整字符串 API、GC、LLVM/原生可执行文件、REPL、语言服务器。
+模块 import、闭包、结构体方法、范围 for（`for i in 0..n`）、隐式数值转换、完整标准库、GC、LLVM/原生可执行文件、REPL、语言服务器。

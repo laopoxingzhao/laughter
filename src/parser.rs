@@ -84,22 +84,15 @@ impl Parser {
         matches!(self.peek_kind(), TokenKind::Ident(_))
     }
 
-    /// 当前 peek 为 `{` 时，判断是否像结构体字面量 `{ ident: ... }` 或 `{}`，
-    /// 以免把 `for x in arr { ... }` 的块当成字面量。
+    /// 当前 peek 为 `{` 时，仅当后面是 `ident :` 时才当作结构体字面量。
+    /// **不能**把 `{ }` 算作字面量，否则 `for x in arr { }` / `while c { }`
+    /// 里裸标识符后的空块会被吞掉。
     fn struct_lit_lookahead(&self) -> bool {
-        if self.pos + 1 >= self.tokens.len() {
+        if self.pos + 2 >= self.tokens.len() {
             return false;
         }
-        match &self.tokens[self.pos + 1].kind {
-            TokenKind::RBrace => true,
-            TokenKind::Ident(_) => {
-                matches!(
-                    self.tokens.get(self.pos + 2).map(|t| &t.kind),
-                    Some(TokenKind::Colon)
-                )
-            }
-            _ => false,
-        }
+        matches!(&self.tokens[self.pos + 1].kind, TokenKind::Ident(_))
+            && matches!(&self.tokens[self.pos + 2].kind, TokenKind::Colon)
     }
 
     fn advance(&mut self) -> Token {
@@ -744,5 +737,52 @@ mod tests {
         let toks = Lexer::new("let x = ;").tokenize().unwrap();
         let err = Parser::new(toks).parse_program().unwrap_err();
         assert!(err.span.line >= 1);
+    }
+
+    #[test]
+    fn parse_struct_decl_and_lit() {
+        let p = parse(
+            r#"
+            struct Point { x: int, y: int }
+            fun main() -> void {
+                let p = Point { x: 1, y: 2 };
+                print(p.x);
+            }
+            "#,
+        );
+        assert_eq!(p.structs().count(), 1);
+    }
+
+    #[test]
+    fn parse_empty_for_body_not_struct_lit() {
+        let p = parse("fun main() -> void { let a: int[] = [1]; for x in a { } }");
+        assert!(matches!(p.items[0], Item::Fun(_)));
+        let Item::Fun(f) = &p.items[0] else {
+            panic!();
+        };
+        assert!(
+            f.body.stmts.iter().any(|s| matches!(s, Stmt::For(_))),
+            "expected for-in stmt, got {:?}",
+            f.body.stmts
+        );
+    }
+
+    #[test]
+    fn parse_empty_while_and_if_bodies() {
+        let p = parse("fun main() -> void { let c = true; while c { } if c { } }");
+        let Item::Fun(f) = &p.items[0] else {
+            panic!();
+        };
+        assert!(f.body.stmts.iter().any(|s| matches!(s, Stmt::While(_))));
+        assert!(f.body.stmts.iter().any(|s| matches!(s, Stmt::If(_))));
+    }
+
+    #[test]
+    fn empty_struct_literal_not_special_cased() {
+        // 空 `{}` 不当作结构体字面量（避免吞掉控制流空块）
+        let toks = Lexer::new("fun main() -> void { let a: int[] = []; for x in a { } }")
+            .tokenize()
+            .unwrap();
+        assert!(Parser::new(toks).parse_program().is_ok());
     }
 }

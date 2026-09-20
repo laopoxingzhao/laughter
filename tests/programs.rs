@@ -225,3 +225,39 @@ fn struct_missing_field_rejected() {
     let err = run_source(src).unwrap_err();
     assert!(err.contains("error"), "{err}");
 }
+
+#[test]
+fn empty_control_flow_bodies() {
+    let out = run_source(
+        r#"
+        fun main() -> void {
+            let a: int[] = [1, 2];
+            for x in a { }
+            let c = false;
+            while c { }
+            if c { } else { }
+            print("ok");
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(out, vec!["ok"]);
+}
+
+#[test]
+fn input_typechecks() {
+    // 只检查能否编译；不在测试里真正读 stdin
+    let err = run_source("fun main() -> void { let s = input(); }");
+    assert!(err.is_ok(), "{err:?}");
+}
+
+#[test]
+fn empty_struct_lit_is_error_or_parse_ok_block() {
+    // 空字面量不被 lookahead 吃成 struct lit；`P {}` 应解析失败或语义失败
+    let src = r#"
+    struct P { x: int }
+    fun main() -> void { let p = P { }; }
+    "#;
+    let err = run_source(src).unwrap_err();
+    assert!(err.contains("error"), "{err}");
+}

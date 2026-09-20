@@ -21,9 +21,10 @@ commits: 24efecd..HEAD
 
 **Journey log** —
 
-1. `for x in arr { }` 若把 `arr {` 当结构体字面量会解析失败——用 `{` 后 lookahead（`ident:` 或 `}`）消歧。
+1. `for x in arr { }` 若把 `arr {` 当结构体字面量会解析失败——lookahead **仅**在 `{ ident :` 时视为字面量；`{ }` 一律留给控制流空块。
 2. 结构体句柄与数组一样用 `Rc<RefCell<...>>`，字段赋值对别名可见。
 3. `for-in` 不新增 opcode，脱糖后复用 `Len`/`GetIndex`/`while` 跳转。
+4. 空结构体字面量 `P { }` 不作特殊支持（与空块消歧冲突）；结构体至少要有一个字段才能方便地构造。
 
 ## [S1] Problem
 
