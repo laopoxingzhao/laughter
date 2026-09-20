@@ -19,25 +19,32 @@ module_loader：解析 import，合并顶层声明后再走上述管线
 
 ```text
 src/
-  lib.rs              库入口，re-export run_file / compile_file / run_source
+  lib.rs              库入口：run_file/compile_file、run_path/compile_path、
+                      run_source/compile_source、run_source_file 等
   syntax/
+    mod.rs
     token.rs          TokenKind、Span
     lexer.rs          词法
     ast.rs            抽象语法树
     parser.rs         递归下降
   sema/
+    mod.rs
     types.rs          语义类型 Type
     check.rs          类型检查 + const 常量折叠
   codegen/
+    mod.rs
     op.rs             操作码
     chunk.rs          Chunk / Function / Module / 反汇编
     compile.rs        AST → 字节码
   runtime/
+    mod.rs
     value.rs          Value（含值语义 StructVal）
     vm.rs             栈机 + run_source / compile_source
   module_loader.rs    import 加载与符号合并
   bin/laughter.rs     CLI
 ```
+
+`run_source` / `compile_source` **拒绝**含 `import` 的源码；多文件请用 `run_file` / CLI。
 
 ## 关键契约（与 LANGUAGE.md 一致）
 
