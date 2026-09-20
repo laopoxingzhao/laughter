@@ -21,7 +21,10 @@ cargo test
 cargo run -- run examples/hello.lg
 cargo run -- check tests/fixtures/type_error.lg
 cargo run -- compile examples/fib.lg          # 生成 examples/fib.lgb
+cargo run -- pack examples/fib.lg             # 生成 examples/fib.lgpack（类 JAR）
 cargo run -- exec examples/fib.lgb
+cargo run -- exec examples/fib.lgpack
+cargo run -- list examples/fib.lgpack
 cargo run -- disasm examples/zca.lg
 cargo run -- disasm examples/fib.lgb
 ```
@@ -31,8 +34,10 @@ cargo run -- disasm examples/fib.lgb
 | `run <file.lg>` | 类型检查 → 编译 → 执行源码 |
 | `check <file.lg>` | 类型检查 → 编译，不执行 |
 | `compile <file.lg> [-o out.lgb]` | 编译并**写入字节码文件** `.lgb` |
-| `exec <file.lgb>` | 执行字节码文件 |
-| `disasm <file.lg\|file.lgb>` | 打印字节码反汇编与常量表 |
+| `pack <file.lg> [-o out.lgpack]` | **打包**为 ZIP 格式的 `.lgpack`（清单+字节码+资源） |
+| `exec <file...>` | 执行 `.lg` / `.lgb` / `.lgpack` |
+| `disasm <file...>` | 反汇编上述任一种 |
+| `list <file.lgpack>` | 列出包内文件（类似 `jar tf`） |
 
 ## 第一个程序
 

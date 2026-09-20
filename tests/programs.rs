@@ -161,3 +161,18 @@ fn lgb_file_on_disk() {
     assert_eq!(out, vec!["21", "zca", "1", "50", "103", "1", "25"]);
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn lgpack_exec_roundtrip() {
+    use laughter::codegen::lgpack::{exec_package, list_package, pack_program, MANIFEST_PATH};
+    use std::path::{Path, PathBuf};
+    std::fs::create_dir_all("target").ok();
+    let out = PathBuf::from("target/mod_main.lgpack");
+    pack_program(Path::new("examples/mod_main.lg"), &out, &[], "app.lgb").unwrap();
+    let lines = exec_package(&out).unwrap();
+    assert_eq!(lines, vec!["5", "42"]);
+    let names = list_package(&out).unwrap();
+    assert!(names.iter().any(|n| n == MANIFEST_PATH));
+    assert!(names.iter().any(|n| n == "app.lgb"));
+    let _ = std::fs::remove_file(&out);
+}

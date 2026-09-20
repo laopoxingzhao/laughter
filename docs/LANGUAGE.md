@@ -157,14 +157,16 @@ expr;                   // 表达式语句
 ## 9. CLI
 
 ```text
-laughter run <file.lg>                    # 检查 + 编译 + 执行源码
-laughter check <file.lg>                  # 检查 + 编译，不执行
-laughter compile <file.lg> [-o out.lgb]   # 编译为磁盘字节码 .lgb
-laughter exec <file.lgb>                  # 执行 .lgb
-laughter disasm <file.lg|file.lgb>        # 反汇编 + 常量表
+laughter run <file.lg>                         # 检查 + 编译 + 执行源码
+laughter check <file.lg>                       # 检查 + 编译，不执行
+laughter compile <file.lg> [-o out.lgb]        # 编译为磁盘字节码 .lgb
+laughter pack <file.lg> [-o out.lgpack]        # 打包为类 JAR 的 .lgpack
+laughter exec <file.lg|file.lgb|file.lgpack>   # 执行
+laughter disasm <file.lg|file.lgb|file.lgpack> # 反汇编 + 常量表
+laughter list <file.lgpack>                    # 列出包内条目
 ```
 
-`.lgb` 格式说明见 [BYTECODE.md](BYTECODE.md)。
+`.lgb` 见 [BYTECODE.md](BYTECODE.md)；`.lgpack`（类 JAR）见 [LGPACK.md](LGPACK.md)。
 
 ## 10. 非目标
 

@@ -9,6 +9,7 @@
 | 代码导读（小白向） | [`docs/CODE_TOUR.md`](docs/CODE_TOUR.md) |
 | 类型英文对照 | [`docs/TYPES_GLOSSARY.md`](docs/TYPES_GLOSSARY.md) |
 | 字节码文件 .lgb | [`docs/BYTECODE.md`](docs/BYTECODE.md) |
+| 类 JAR 包 .lgpack | [`docs/LGPACK.md`](docs/LGPACK.md) |
 | 架构 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 文档索引 | [`docs/README.md`](docs/README.md) |
 | 源文件后缀 | `.lg` |
@@ -22,7 +23,8 @@
 cargo test
 cargo run -- run examples/hello.lg
 cargo run -- compile examples/fib.lg   # 生成 .lgb 字节码
-cargo run -- exec examples/fib.lgb
+cargo run -- pack examples/fib.lg      # 打包 .lgpack（类似 jar）
+cargo run -- exec examples/fib.lgpack
 cargo run -- disasm examples/zca.lg
 ```
 

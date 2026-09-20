@@ -14,3 +14,4 @@ name = "laughter"
 path = "src/bin/laughter.rs"
 
 [dependencies]
+zip = "2"

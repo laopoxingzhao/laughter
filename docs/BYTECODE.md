@@ -1,6 +1,8 @@
 # 字节码文件 `.lgb`
 
-Laughter 编译后会在内存里生成 `Module`。用 CLI 的 `compile` 可以把它写成磁盘上的 **`.lgb`** 文件，再用 `exec` 执行，不必每次重新解析源码。
+Laughter 编译后会在内存里生成 `Module`。用 CLI 的 `compile` 可以把它写成磁盘上的 **`.lgb`** 文件，再用 `exec` 执行。
+
+若需要「像 JAR 一样」把清单和资源打成**一个包**，请用 **`.lgpack`**，见 [LGPACK.md](LGPACK.md)。
 
 ## 命令
 
