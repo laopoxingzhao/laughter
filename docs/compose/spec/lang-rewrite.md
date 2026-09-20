@@ -8,6 +8,8 @@ commits: b0b9343..HEAD
 
 # Laughter 语言能力汇总 + 彻底重写
 
+> 权威语义见 [`../../LANGUAGE.md`](../../LANGUAGE.md)。本文是 Compose 交付记录，不覆盖契约。
+
 ## Report
 
 **What was built** — 将演进中的实现彻底重写为分层结构：`syntax` / `sema` / `codegen` / `runtime` / `module_loader`。语言契约收敛到 **`docs/LANGUAGE.md`（v2）**，允许破坏旧兼容。相对旧实现：支持多层字段赋值 `p.a.b = v`；`const` 折叠与值语义结构体保留；import 仅合并声明；有 `main` 时顶层不执行。examples 在 v2 下行为与原先一致并全部通过集成测试。
