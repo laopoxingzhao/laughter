@@ -36,7 +36,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 把整个源文件切成 Token，最后附加一个 `Eof`。
+    /// 把整个源文件切成 Token。
+    /// 步骤：循环「跳过空白/注释 → 取一个词」→ 收集 → 直到 Eof。
+    /// 最后总是附加 `Eof`，方便解析器判断结束。
     pub fn tokenize(mut self) -> Result<Vec<Token>, LexError> {
         let mut out = Vec::new();
         loop {

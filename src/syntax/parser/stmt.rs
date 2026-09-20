@@ -2,6 +2,10 @@
 use super::*;
 
 impl Parser {
+    /// 语句块 `{ ... }`：
+    /// 1. 吃掉 `{`
+    /// 2. 循环解析语句，直到 `}` 或文件结束
+    /// 3. 吃掉 `}`，组装 Block
     pub(crate) fn block(&mut self) -> Result<Block, ParseError> {
         let start = self.expect(TokenKind::LBrace, "`{`")?.span;
         let mut stmts = Vec::new();
@@ -123,6 +127,8 @@ impl Parser {
         Ok(Stmt::Expr(ExprStmt { expr, span }))
     }
 
+    /// `let 名字 [: 类型] = 值;`
+    /// 步骤：吃 let → 名字 → 可选 `: 类型` → `=` → 表达式 → `;`
     pub(crate) fn let_stmt(&mut self) -> Result<LetStmt, ParseError> {
         let start = self.expect(TokenKind::Let, "`let`")?.span;
         let name = self.expect_ident()?;
@@ -143,6 +149,7 @@ impl Parser {
         })
     }
 
+    /// `if 条件 { 块 } [else { 块 } | else if ...]`
     pub(crate) fn if_stmt(&mut self) -> Result<IfStmt, ParseError> {
         let start = self.expect(TokenKind::If, "`if`")?.span;
         let cond = self.expr()?;
@@ -165,6 +172,7 @@ impl Parser {
         })
     }
 
+    /// `while 条件 { 块 }`
     pub(crate) fn while_stmt(&mut self) -> Result<WhileStmt, ParseError> {
         let start = self.expect(TokenKind::While, "`while`")?.span;
         let cond = self.expr()?;
@@ -176,6 +184,8 @@ impl Parser {
         })
     }
 
+    /// `for 变量 in 迭代式 { 块 }`
+    /// 迭代式可以是数组或 `a..b` 范围（在 expr 里已能解析 Range）。
     pub(crate) fn for_stmt(&mut self) -> Result<ForStmt, ParseError> {
         let start = self.expect(TokenKind::For, "`for`")?.span;
         let var = self.expect_ident()?;

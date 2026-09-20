@@ -148,3 +148,5 @@ fun Point.sum(self: Point) -> int { return self.x + self.y; }
 4. 故意写 `let x = 1 + 2.5;`，看类型错误信息。
 
 读不懂某一段时，优先看该文件顶部的 `//!` 模块说明，再对照本导读。
+
+代码里对关键路径（词法 tokenize、语法 stmt/expr、const fold、语句编译、VM 每条指令、CLI 各子命令）都写了**分步中文注释**，可在编辑器中直接顺着 `// 步骤…` 往下读。

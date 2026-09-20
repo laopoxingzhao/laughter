@@ -102,6 +102,10 @@ impl Compiler {
     ///    结构体是值，需要：压根对象 → 取出父节点 → 算 `e` → `SetField` 沿路径写回 → `SetLocal`
     ///
     /// `arr[i].f = e`：在栈上保留 `[arr, i]`，再取出元素副本改字段，最后 `SetIndex` 写回数组。
+    /// 编译赋值。
+    /// 1) `x = e`：算 e → SetLocal → Pop
+    /// 2) `a[i] = e`：压 a、i、e → SetIndex
+    /// 3) `p.f = e`：值语义，取出/写回见下方分支
     pub(crate) fn assign(&mut self, a: &AssignStmt) -> Result<(), CompileError> {
         let line = a.span.line;
         let slot = self
@@ -211,6 +215,16 @@ impl Compiler {
         Ok(())
     }
 
+    /// 编译 `for`。
+    ///
+    /// **范围 for `a..b`**：
+    /// 1. 算 a → 存入循环变量槽；算 b → 存入临时槽
+    /// 2. 循环头：`i < end`，假则跳出
+    /// 3. 执行循环体
+    /// 4. continue 跳到这里：`i = i + 1`，再 Loop 回循环头
+    /// 5. break / 正常结束：清理局部并继续后续代码
+    ///
+    /// **数组 for-in**：思路相同，多了「每次从数组取 arr[i] 绑定循环变量」。
     pub(crate) fn for_stmt(&mut self, f: &ForStmt) -> Result<(), CompileError> {
         let line = f.span.line;
         self.f().begin();

@@ -65,6 +65,8 @@ impl Parser {
         })
     }
 
+    /// `struct 名 { 字段: 类型, ... }`
+    /// 步骤：吃 struct → 名字 → `{` → 循环「字段名 : 类型」→ `}`
     pub(crate) fn struct_decl(&mut self) -> Result<StructDecl, ParseError> {
         let start = self.expect(TokenKind::Struct, "`struct`")?.span;
         let name = self.expect_ident()?;
@@ -115,6 +117,8 @@ impl Parser {
     }
 
     /// `fun` 声明：支持 `fun name(...)` 与方法 `fun Type.name(self: Type, ...)`。
+    /// 函数/方法声明。
+    /// 步骤：fun → 名字（若是 `Type.method` 则记录 on_type）→ 参数表 → `->` 返回类型 → 函数体块
     pub(crate) fn fun_decl(&mut self) -> Result<FunDecl, ParseError> {
         let start = self.expect(TokenKind::Fun, "`fun`")?.span;
         let first = self.expect_ident()?;

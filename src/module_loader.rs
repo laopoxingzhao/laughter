@@ -25,6 +25,7 @@ use crate::syntax::ast::*;
 use crate::syntax::lexer::Lexer;
 use crate::syntax::parser::Parser;
 
+/// 单文件：词法 + 语法 → AST（错误带 `file:line:col`）。
 fn parse_src(file: &str, src: &str) -> Result<Program, String> {
     let toks = Lexer::new(src).tokenize().map_err(|e| {
         format!(
@@ -121,6 +122,10 @@ fn load(path: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<Item>) -> Result<()
 }
 
 /// 从文件路径编译：加载 import 图 → 检查 + const 折叠 → 字节码 Module。
+/// 按路径编译（支持 import）。步骤：
+/// 1. load：递归读入 import，合并声明
+/// 2. Checker：类型检查 + const 折叠
+/// 3. Compiler：AST → 字节码 Module
 pub fn compile_path(path: &Path) -> Result<Module, String> {
     let mut stack = vec![];
     let mut items = vec![];
@@ -138,6 +143,7 @@ pub fn compile_path(path: &Path) -> Result<Module, String> {
 }
 
 /// 编译并执行文件；诊断前缀为文件路径。
+/// 按路径编译并执行，返回 print 的各行。
 pub fn run_path(path: &Path) -> Result<Vec<String>, String> {
     let module = compile_path(path)?;
     let mut vm = crate::runtime::vm::Vm::new(&module);

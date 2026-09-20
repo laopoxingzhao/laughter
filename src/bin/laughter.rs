@@ -55,6 +55,11 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
+/// CLI 主流程（每一步）：
+/// 1. 读命令行参数
+/// 2. 按子命令分派
+/// 3. 调用库 API（run_file / compile_file / pack_program / ...）
+/// 4. 成功则打印结果；失败打印错误并返回非 0 退出码
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
@@ -67,6 +72,7 @@ fn main() -> ExitCode {
     };
 
     match cmd {
+        // run：源码 → 检查+编译+执行，打印 print 的每一行
         "run" => {
             if is_lgb(path) || is_lgpack(path) {
                 return fail("请对 .lg 使用 run；字节码/包请用 exec");
@@ -88,6 +94,7 @@ fn main() -> ExitCode {
             }
             Err(e) => fail(e),
         },
+        // compile：源码 → 写入 .lgb 字节码文件（默认同名，可用 -o）
         "compile" => {
             if !path.ends_with(".lg") && !is_lgb(path) {
                 // allow .lg only
@@ -123,6 +130,7 @@ fn main() -> ExitCode {
                 Err(e) => fail(e),
             }
         }
+        // pack：编译入口并打成 ZIP 包 .lgpack（清单+字节码+资源）
         "pack" => {
             if is_lgpack(path) || is_lgb(path) {
                 return fail("`pack` 需要 .lg 入口源码");
@@ -159,6 +167,7 @@ fn main() -> ExitCode {
                 Err(e) => fail(e),
             }
         }
+        // exec：根据扩展名选择 .lg / .lgb / .lgpack 的执行路径
         "exec" => {
             if is_lgpack(path) {
                 return match exec_package(Path::new(path)) {
@@ -197,6 +206,7 @@ fn main() -> ExitCode {
                 Err(e) => fail(e),
             }
         }
+        // disasm：反汇编 .lg / .lgb / .lgpack，打印人类可读指令
         "disasm" => {
             if is_lgpack(path) {
                 return match disasm_package(Path::new(path)) {
@@ -221,6 +231,7 @@ fn main() -> ExitCode {
             print!("{text}");
             ExitCode::SUCCESS
         }
+        // list：列出 .lgpack 内条目（类似 jar tf）
         "list" => match list_package(Path::new(path)) {
             Ok(names) => {
                 for n in names {

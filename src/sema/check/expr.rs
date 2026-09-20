@@ -2,6 +2,9 @@
 use super::*;
 
 impl<'a> Checker<'a> {
+    /// 求表达式的类型（语义阶段）。
+    /// 步骤：按节点种类处理 → 字面量直接给类型；变量查作用域/const；
+    ///      二元运算调用 bin_result；调用检查签名与实参。
     pub(crate) fn expr_ty(&mut self, e: &Expr) -> Result<Type, CheckError> {
         match e {
             Expr::Int { .. } => Ok(Type::Int),

@@ -2,6 +2,8 @@
 use super::*;
 
 impl<'a> Checker<'a> {
+    /// 检查一条语句。
+    /// 步骤：按语句种类分支 → 求相关表达式类型 → 对照语言规则，不符则报错。
     pub(crate) fn check_stmt(&mut self, s: &Stmt) -> Result<(), CheckError> {
         match s {
             Stmt::Let(l) => {

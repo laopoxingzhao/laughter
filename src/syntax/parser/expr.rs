@@ -1,7 +1,14 @@
 //! 表达式解析（优先级见模块注释）。
+//!
+//! **每一步在做什么**：像算术课从「优先级最低」的运算开始拆括号。
+//! 调用链：expr → range → or → and → equality → cmp → term → factor
+//!         → unary → postfix → primary
+//! 每一层：先解析更「紧」的左边，再看当前层运算符是否出现，出现则继续解析右边并组装 Binary。
+
 use super::*;
 
 impl Parser {
+    /// 表达式入口：允许 `a..b`（范围；主要给 for 使用）。
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
         self.range_expr()
     }
@@ -21,7 +28,9 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// `||` 层：左边解析完后，连续吃 `|| 右边`。
     pub(crate) fn or(&mut self) -> Result<Expr, ParseError> {
+        // 步骤1：先解析优先级更高的 &&
         let mut lhs = self.and()?;
         while self.check(&TokenKind::OrOr) {
             self.advance();
@@ -37,6 +46,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// `&&` 层。
     pub(crate) fn and(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.equality()?;
         while self.check(&TokenKind::AndAnd) {
@@ -151,6 +161,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// 一元 `-` / `!`：若有则吃掉运算符，再解析右边（可以连续多个一元）。
     pub(crate) fn unary(&mut self) -> Result<Expr, ParseError> {
         if self.check(&TokenKind::Minus) {
             let t = self.advance();
@@ -173,6 +184,7 @@ impl Parser {
         self.postfix()
     }
 
+    /// 后缀：在「原子」表达式后面反复吃 `.字段` `.方法()` `[下标]`。
     pub(crate) fn postfix(&mut self) -> Result<Expr, ParseError> {
         let mut e = self.primary()?;
         loop {
@@ -230,6 +242,8 @@ impl Parser {
         Ok(args)
     }
 
+    /// 原子：数字/字符串/true/false/变量/(表达式)/[数组]/结构体字面量/函数调用。
+    /// 这是优先级最高的一层，不再向更深层拆分。
     pub(crate) fn primary(&mut self) -> Result<Expr, ParseError> {
         let t = self.peek().clone();
         match t.kind.clone() {

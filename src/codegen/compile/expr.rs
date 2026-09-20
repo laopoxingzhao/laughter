@@ -1,7 +1,12 @@
 //! 表达式与调用编译。
+//!
+//! **每一步在做什么**：把 AST 节点变成「压栈 / 运算 / 弹栈」的指令序列。
+//! 例如 `1 + 2 * 3` 会变成：Const 1, Const 2, Const 3, Mul, Add（栈机后缀式）。
+
 use super::*;
 
 impl Compiler {
+    /// 编译一个表达式：保证执行完后，结果在**栈顶**。
     pub(crate) fn expr(&mut self, e: &Expr) -> Result<(), CompileError> {
         match e {
             Expr::Int { value, span } => {
@@ -22,6 +27,7 @@ impl Compiler {
                 self.chunk().emit_const(v, span.line)?;
                 Ok(())
             }
+            // 变量：若已折叠成 const 则直接发字面量；否则 GetLocal 槽号
             Expr::Var { name } => {
                 if let Some(v) = self.consts.get(&name.name).cloned() {
                     self.chunk().emit_const(v, name.span.line)?;
@@ -44,6 +50,7 @@ impl Compiler {
                 Ok(())
             }
             Expr::Binary { op, lhs, rhs, span } => self.bin(*op, lhs, rhs, *span),
+            // 函数调用 / 内建，见 call()
             Expr::Call { callee, args, span } => self.call(&callee.name, args, *span),
             Expr::MethodCall {
                 recv,
@@ -164,6 +171,8 @@ impl Compiler {
         }
     }
 
+    /// 编译函数/内建调用。
+    /// 步骤：识别内建 → 否则查函数表 → 依次编译实参（压栈）→ 发 Call
     pub(crate) fn call(
         &mut self,
         name: &str,

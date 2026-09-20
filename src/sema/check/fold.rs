@@ -2,6 +2,15 @@
 use super::*;
 
 impl<'a> Checker<'a> {
+    /// 把表达式在**编译期**算成具体值（仅当整棵子树都是常量时）。
+    ///
+    /// 步骤：
+    /// 1. 字面量 → 直接得到 Value
+    /// 2. 变量 → 查已折叠的 const 表；查不到说明不是常量
+    /// 3. 一元/二元 → 先递归折叠子表达式，再算运算
+    /// 4. 其它（函数调用、变量等）→ 报错「不是编译期常量」
+    ///
+    /// 返回 (类型, 值)，供检查器核对标注类型、供 codegen 发 Const 指令。
     pub(crate) fn fold(&self, e: &Expr) -> Result<(Type, Value), CheckError> {
         match e {
             Expr::Int { value, .. } => Ok((Type::Int, Value::Int(*value))),
@@ -30,6 +39,7 @@ impl<'a> Checker<'a> {
                     }),
                 }
             }
+            // 二元：先折左，再折右，最后 fold_bin 做运算
             Expr::Binary { op, lhs, rhs, span } => {
                 let (lt, lv) = self.fold(lhs)?;
                 let (rt, rv) = self.fold(rhs)?;
