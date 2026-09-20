@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use laughter::vm::{compile_source, run_source};
+use laughter::vm::{compile_source_file, run_source_file};
 
 fn usage() -> ! {
     eprintln!(
@@ -37,7 +37,7 @@ fn main() -> ExitCode {
     };
 
     match cmd {
-        "run" => match run_source(&src) {
+        "run" => match run_source_file(path, &src) {
             Ok(lines) => {
                 for line in lines {
                     println!("{line}");
@@ -49,7 +49,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "check" => match compile_source(&src) {
+        "check" => match compile_source_file(path, &src) {
             Ok(_) => {
                 println!("OK: {path}");
                 ExitCode::SUCCESS
@@ -59,7 +59,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "disasm" => match compile_source(&src) {
+        "disasm" => match compile_source_file(path, &src) {
             Ok(module) => {
                 for f in &module.functions {
                     let label = if f.name == "$toplevel" {
@@ -71,6 +71,12 @@ fn main() -> ExitCode {
                         )
                     };
                     print!("{}", f.chunk.disassemble(&label));
+                    if !f.chunk.constants.is_empty() {
+                        println!("constants:");
+                        for (i, c) in f.chunk.constants.iter().enumerate() {
+                            println!("  [{i}] {}", c.display());
+                        }
+                    }
                     println!();
                 }
                 ExitCode::SUCCESS

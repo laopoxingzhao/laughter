@@ -104,8 +104,9 @@ impl Compiler {
         let mut function_index = HashMap::new();
         let mut void_fns = HashMap::new();
 
+        let mut seen = std::collections::HashSet::new();
         for f in program.functions() {
-            if function_index.contains_key(&f.name.name) {
+            if !seen.insert(f.name.name.clone()) {
                 return Err(CompileError::new(
                     format!("duplicate function `{}`", f.name.name),
                     f.name.span,
@@ -282,8 +283,11 @@ impl Compiler {
         self.compile_block(&i.then_block)?;
         match &i.else_branch {
             None => {
+                // Jump over the false-path Pop so the true path does not fall into it.
+                let end_jump = self.chunk().emit_jump(Op::Jump, line);
                 self.chunk().patch_jump(then_jump)?;
                 self.chunk().emit_op(Op::Pop, line);
+                self.chunk().patch_jump(end_jump)?;
             }
             Some(branch) => {
                 let else_jump = self.chunk().emit_jump(Op::Jump, line);

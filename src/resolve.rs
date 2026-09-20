@@ -191,13 +191,38 @@ impl<'a> Checker<'a> {
     fn check_stmt(&mut self, stmt: &Stmt) -> Result<(), CheckError> {
         match stmt {
             Stmt::Let(l) => {
-                let val_ty = self.check_expr(&l.value)?;
+                let empty_array = matches!(&l.value, Expr::Array { elems, .. } if elems.is_empty());
+                let val_ty = if empty_array {
+                    if let Some(t) = &l.ty {
+                        Type::from_ast(t).map_err(|m| CheckError {
+                            message: m,
+                            span: l.name.span,
+                        })?
+                    } else {
+                        return Err(CheckError {
+                            message: "empty array literal `[]` requires a `let` type annotation such as `int[]`".into(),
+                            span: l.name.span,
+                        });
+                    }
+                } else {
+                    self.check_expr(&l.value)?
+                };
                 let declared = if let Some(t) = &l.ty {
                     let t = Type::from_ast(t).map_err(|m| CheckError {
                         message: m,
                         span: l.name.span,
                     })?;
-                    if t != val_ty {
+                    if empty_array {
+                        if !matches!(t, Type::Array(_)) {
+                            return Err(CheckError {
+                                message: format!(
+                                    "let `{}` declared as `{t}` but `[]` requires an array type",
+                                    l.name.name
+                                ),
+                                span: l.span,
+                            });
+                        }
+                    } else if t != val_ty {
                         return Err(CheckError {
                             message: format!(
                                 "let `{}` declared as `{t}` but initialized with `{val_ty}`",
@@ -465,7 +490,7 @@ impl<'a> Checker<'a> {
             Expr::Array { elems, span } => {
                 if elems.is_empty() {
                     return Err(CheckError {
-                        message: "empty array literal needs a type annotation on `let`".into(),
+                        message: "empty array literal `[]` requires a `let` type annotation such as `int[]`".into(),
                         span: *span,
                     });
                 }

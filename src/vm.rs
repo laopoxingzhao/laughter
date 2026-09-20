@@ -500,7 +500,8 @@ fn compare(a: &Value, b: &Value, line: u32) -> Result<i32, VmError> {
 }
 
 /// Compile + run source, returning printed lines. Used by tests and CLI.
-pub fn run_source(src: &str) -> Result<Vec<String>, String> {
+/// `file` is used in diagnostics as `file:line:col: error: ...`.
+pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
     use crate::compiler::Compiler;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
@@ -508,34 +509,48 @@ pub fn run_source(src: &str) -> Result<Vec<String>, String> {
 
     let tokens = Lexer::new(src)
         .tokenize()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
     let program = Parser::new(tokens)
         .parse_program()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
     Checker::new(&program)
         .check()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
     let module = Compiler::compile(&program)
-        .map_err(|e| format!("{}:{}: error: {}", e.line, e.col, e.message))?;
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))?;
     let mut vm = Vm::new(&module);
-    vm.run()
-        .map_err(|e| format!("runtime error at line {}: {}", e.line, e.message))
+    vm.run().map_err(|e| {
+        if e.line == 0 {
+            format!("{file}: runtime error: {}", e.message)
+        } else {
+            format!("{file}:{}: runtime error: {}", e.line, e.message)
+        }
+    })
+}
+
+pub fn run_source(src: &str) -> Result<Vec<String>, String> {
+    run_source_file("<input>", src)
+}
+
+pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
+    use crate::compiler::Compiler;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::resolve::Checker;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    let program = Parser::new(tokens)
+        .parse_program()
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    Checker::new(&program)
+        .check()
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    Compiler::compile(&program)
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 
 pub fn compile_source(src: &str) -> Result<Module, String> {
-    use crate::compiler::Compiler;
-    use crate::lexer::Lexer;
-    use crate::parser::Parser;
-    use crate::resolve::Checker;
-
-    let tokens = Lexer::new(src)
-        .tokenize()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
-    let program = Parser::new(tokens)
-        .parse_program()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
-    Checker::new(&program)
-        .check()
-        .map_err(|e| format!("{}: error: {}", e.span, e.message))?;
-    Compiler::compile(&program).map_err(|e| format!("{}:{}: error: {}", e.line, e.col, e.message))
+    compile_source_file("<input>", src)
 }
