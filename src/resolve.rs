@@ -24,7 +24,7 @@ pub struct Checker<'a> {
     functions: HashMap<String, FunInfo>,
     scopes: Vec<HashMap<String, Type>>,
     current_ret: Type,
-    /// true while checking top-level statements
+    /// 检查顶层语句时为 true（此时禁止 `return`）
     at_top_level: bool,
 }
 
@@ -40,11 +40,11 @@ impl<'a> Checker<'a> {
     }
 
     pub fn check(mut self) -> Result<(), CheckError> {
-        // register functions first
+        // 先登记全部函数签名，便于互相调用/递归
         for f in self.program.functions() {
             self.declare_function(f)?;
         }
-        // builtins are not redefinable — already checked in declare_function
+        // 内建 print/len 不可重定义——declare_function 中已拒绝
 
         for f in self.program.functions() {
             self.check_function(f)?;

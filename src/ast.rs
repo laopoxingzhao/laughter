@@ -123,7 +123,7 @@ pub struct LetStmt {
 
 #[derive(Debug, Clone)]
 pub struct AssignStmt {
-    /// `name = value` or `name[index] = value`
+    /// `name = value` 或 `name[index] = value`
     pub name: Ident,
     pub index: Option<Expr>,
     pub value: Expr,
@@ -134,7 +134,7 @@ pub struct AssignStmt {
 pub struct IfStmt {
     pub cond: Expr,
     pub then_block: Block,
-    /// `else` or `else if` — if `else_branch` is `If`, it was `else if`
+    /// `else` 或 `else if`：`else_branch` 为 `If` 时表示 `else if`
     pub else_branch: Option<ElseBranch>,
     pub span: Span,
 }

@@ -181,7 +181,7 @@ impl Parser {
             return Ok(Stmt::Block(self.block()?));
         }
 
-        // assign or expr stmt
+        // 区分赋值语句与表达式语句（回溯保存位置）
         if self.check_ident() {
             let save = self.pos;
             let name = self.expect_ident()?;
@@ -285,7 +285,7 @@ impl Parser {
         Ok(ReturnStmt { value, span: start })
     }
 
-    // expressions: or -> and -> equality -> comparison -> term -> factor -> unary -> postfix
+    // 表达式：or → and → equality → comparison → term → factor → unary → postfix
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
         self.or()
     }

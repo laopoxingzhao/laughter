@@ -501,8 +501,8 @@ fn compare(a: &Value, b: &Value, line: u32) -> Result<i32, VmError> {
     })
 }
 
-/// Compile + run source, returning printed lines. Used by tests and CLI.
-/// `file` is used in diagnostics as `file:line:col: error: ...`.
+/// 编译并执行 `src`，返回 `print` 输出的各行。
+/// 诊断里的 `file` 会出现在 `file:line:col: error:` 中。
 pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
     use crate::compiler::Compiler;
     use crate::lexer::Lexer;

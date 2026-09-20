@@ -99,7 +99,7 @@ impl<'a> Lexer<'a> {
             return self.string(span);
         }
 
-        // multi-char operators first
+        // 多字符运算符优先匹配
         let kind = match c {
             b'(' => {
                 self.bump();
@@ -323,12 +323,11 @@ impl<'a> Lexer<'a> {
                     }
                 },
                 Some(c) => {
-                    // collect full UTF-8 char starting at c
+                    // 收集以 c 为首的完整 UTF-8 字符
                     if c < 0x80 {
                         out.push(c as char);
                     } else {
-                        // rewind one bump for multi-byte: we already consumed first byte
-                        // Rebuild by scanning remaining bytes from src
+                        // 多字节：c 已消费首字节，继续收后续 continuation 字节
                         let mut bytes = vec![c];
                         while bytes.len() < 4 {
                             match self.peek() {

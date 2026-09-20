@@ -120,7 +120,7 @@ impl Compiler {
         }
 
         let mut fn_decls: Vec<&FunDecl> = program.functions().collect();
-        // stable order: source order
+        // 按源码顺序编号，保证 Call 索引稳定
         fn_decls.sort_by_key(|f| f.span.line);
 
         for (i, f) in fn_decls.iter().enumerate() {
@@ -228,7 +228,7 @@ impl Compiler {
                 Ok(())
             }
             Stmt::Expr(e) => {
-                // void-producing statements leave nothing on the stack
+                // void 表达式语句不向栈上留值，故不必 Pop
                 let leaves_value = match &e.expr {
                     Expr::Call { callee, .. } if callee.name == "print" => false,
                     Expr::Call { callee, .. } if self.is_void_call_target(&callee.name) => false,

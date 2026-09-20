@@ -23,13 +23,13 @@ impl fmt::Display for Span {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
-    // literals & names
+    // 字面量与标识符
     Ident(String),
     Int(i64),
     Float(f64),
     Str(String),
 
-    // keywords
+    // 关键字
     Fun,
     Let,
     If,
@@ -38,14 +38,14 @@ pub enum TokenKind {
     Return,
     True,
     False,
-    // types
+    // 类型关键字
     TyInt,
     TyFloat,
     TyBool,
     TyString,
     TyVoid,
 
-    // punctuation
+    // 标点
     LParen,
     RParen,
     LBrace,
@@ -57,7 +57,7 @@ pub enum TokenKind {
     Semi,
     Arrow,
 
-    // operators
+    // 运算符
     Plus,
     Minus,
     Star,

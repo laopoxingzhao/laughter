@@ -1,3 +1,5 @@
+//! 集成测试：通过 `laughter::vm::run_source` 跑 `.lg` 片段与 examples。
+
 use laughter::vm::{run_source, run_source_file};
 
 #[test]
