@@ -56,10 +56,10 @@ fun main() -> void {
 | 特性 | 说明 |
 |------|------|
 | 类型 | `int` `float` `bool` `string` `T[]` `void` 以及 `struct`（无隐式转换） |
-| 变量 | `let x: int = 1;` 或 `let y = 2;`；`x = ...;` 赋值 |
+| 变量 | `let x: int = 1;`；`const N: int = 10;`（编译期折叠为字面量）；`x = ...;` |
 | 控制流 | `if` / `else if` / `else` / `while` / `for x in arr` / `for i in a..b` / `break` / `continue` |
 | 函数 | `fun name(p: T) -> R { ... }`，允许递归；有 `main` 时从 `main` 进入 |
-| 结构体 | `struct Point { x: int, y: int }`；字面量与字段读写；方法 `fun Point.sum(self: Point) -> int` |
+| 结构体 | **值语义**拷贝；`struct Point { x: int, y: int }`；方法 `fun Point.sum(self: Point) -> int`（接收者按值） |
 | 模块 | `import "math.lg";` 或 `import "math.lg" as math;`（`math.add`）；只合并声明，不执行目标文件顶层语句 |
 | 数组 | 同构 `T[]`；`push`/`pop`；索引越界与空 `pop` 为运行时错误 |
 | 内建 | `print` `len` `str_at` `str_sub` `to_string` `push` `pop` `input` |
