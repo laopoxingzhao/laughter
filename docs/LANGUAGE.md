@@ -1,4 +1,7 @@
-# Laughter 语言契约（v2 · 重写定稿）
+# Laughter 语言契约（v2）
+
+> **权威文档**：本文件定义 Laughter 的类型、语法与语义。实现与测试须与之一致。  
+> 入门见 [GETTING_STARTED.md](GETTING_STARTED.md)，实现见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 教学向编译语言。宿主 Rust；源文件 `.lg`；管线：**Lexer → Parser → Checker → Bytecode → VM**。
 
