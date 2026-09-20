@@ -51,7 +51,7 @@ impl Compiler {
             // break：只发射向前 Jump，偏移在循环编译结束时回填到出口
             Stmt::Break(sp) => {
                 if self.loops.is_empty() {
-                    return Err(CompileError::at("`break` outside loop", *sp));
+                    return Err(CompileError::at("`break` 只能用在循环内", *sp));
                 }
                 let j = self.chunk().emit_jump(Op::Jump, sp.line);
                 self.loops.last_mut().unwrap().breaks.push(j);
@@ -60,7 +60,7 @@ impl Compiler {
             // continue：Jump 回填到增量/回边，避免数组 for 死循环
             Stmt::Continue(sp) => {
                 if self.loops.is_empty() {
-                    return Err(CompileError::at("`continue` outside loop", *sp));
+                    return Err(CompileError::at("`continue` 只能用在循环内", *sp));
                 }
                 let j = self.chunk().emit_jump(Op::Jump, sp.line);
                 self.loops.last_mut().unwrap().continues.push(j);
@@ -113,10 +113,9 @@ impl Compiler {
     /// 3) `p.f = e`：值语义，取出/写回见下方分支
     pub(crate) fn assign(&mut self, a: &AssignStmt) -> Result<(), CompileError> {
         let line = a.span.line;
-        let slot = self
-            .f()
-            .slot(&a.name.name)
-            .ok_or_else(|| CompileError::at(format!("undefined `{}`", a.name.name), a.name.span))?;
+        let slot = self.f().slot(&a.name.name).ok_or_else(|| {
+            CompileError::at(format!("未定义的变量 `{}`", a.name.name), a.name.span)
+        })?;
 
         if a.fields.is_empty() {
             match &a.index {

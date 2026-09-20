@@ -34,7 +34,7 @@ impl Compiler {
                     return Ok(());
                 }
                 let s = self.f().slot(&name.name).ok_or_else(|| {
-                    CompileError::at(format!("undefined `{}`", name.name), name.span)
+                    CompileError::at(format!("未定义的变量 `{}`", name.name), name.span)
                 })?;
                 self.chunk().emit(Op::GetLocal, name.span.line);
                 self.chunk().emit_u16(s, name.span.line);
@@ -76,7 +76,9 @@ impl Compiler {
                 self.chunk().emit_u16(args.len() as u16, span.line);
                 Ok(())
             }
-            Expr::Range { span, .. } => Err(CompileError::at("range only allowed in `for`", *span)),
+            Expr::Range { span, .. } => {
+                Err(CompileError::at("范围 `a..b` 仅允许出现在 `for` 中", *span))
+            }
             Expr::Index { base, index, span } => {
                 self.expr(base)?;
                 self.expr(index)?;
@@ -102,7 +104,7 @@ impl Compiler {
             }
             Expr::StructLit { name, fields, span } => {
                 let idx = *self.sidx.get(&name.name).ok_or_else(|| {
-                    CompileError::at(format!("unknown struct `{}`", name.name), name.span)
+                    CompileError::at(format!("未知结构体 `{}`", name.name), name.span)
                 })?;
                 let decl = self.stypes[idx].clone();
                 for fname in &decl.fields {
@@ -111,7 +113,7 @@ impl Compiler {
                             .iter()
                             .find(|(n, _)| &n.name == fname)
                             .ok_or_else(|| {
-                                CompileError::at(format!("missing field `{fname}`"), name.span)
+                                CompileError::at(format!("缺少字段 `{fname}`"), name.span)
                             })?;
                     self.expr(e)?;
                 }
@@ -211,7 +213,7 @@ impl Compiler {
         let idx = *self
             .fidx
             .get(name)
-            .ok_or_else(|| CompileError::at(format!("undefined function `{name}`"), span))?;
+            .ok_or_else(|| CompileError::at(format!("未定义函数 `{name}`"), span))?;
         for a in args {
             self.expr(a)?;
         }

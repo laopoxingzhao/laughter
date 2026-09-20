@@ -70,7 +70,7 @@ impl Parser {
             Ok(self.advance())
         } else {
             Err(ParseError {
-                message: format!("expected {what}, found {}", self.kind()),
+                message: format!("期望 {what}，实际是 {}", self.kind()),
                 span: self.peek().span,
             })
         }
@@ -86,7 +86,7 @@ impl Parser {
             })
         } else {
             Err(ParseError {
-                message: format!("expected identifier, found {}", t.kind),
+                message: format!("期望标识符，实际是 {}", t.kind),
                 span: t.span,
             })
         }

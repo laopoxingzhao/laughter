@@ -16,14 +16,14 @@ impl<'a> Checker<'a> {
                     return Ok(t.clone());
                 }
                 self.lookup(&name.name).ok_or_else(|| CheckError {
-                    message: format!("undefined variable `{}`", name.name),
+                    message: format!("未定义的变量 `{}`", name.name),
                     span: name.span,
                 })
             }
             Expr::Range { start, end, span } => {
                 if self.expr_ty(start)? != Type::Int || self.expr_ty(end)? != Type::Int {
                     return Err(CheckError {
-                        message: "range bounds must be `int`".into(),
+                        message: "范围两端类型必须是 `int`".into(),
                         span: *span,
                     });
                 }
@@ -67,7 +67,7 @@ impl<'a> Checker<'a> {
                             .and_then(|m| m.get(&method.name))
                             .cloned()
                             .ok_or_else(|| CheckError {
-                                message: format!("no method `{}` on `{}`", method.name, name.name),
+                                message: format!("`{}` 上没有方法 `{}`", name.name, method.name),
                                 span: method.span,
                             })?;
                         return self.call_info(&method.name, args, &info, *span);
@@ -76,7 +76,7 @@ impl<'a> Checker<'a> {
                 let rt = self.expr_ty(recv)?;
                 let Type::Struct(sn) = rt else {
                     return Err(CheckError {
-                        message: format!("cannot call method on `{rt}`"),
+                        message: format!("无法在 `{rt}` 上调用方法"),
                         span: *span,
                     });
                 };
@@ -86,7 +86,7 @@ impl<'a> Checker<'a> {
                     .and_then(|m| m.get(&method.name))
                     .cloned()
                     .ok_or_else(|| CheckError {
-                        message: format!("no method `{}` on `{sn}`", method.name),
+                        message: format!("`{sn}` 上没有方法 `{}`", method.name),
                         span: method.span,
                     })?;
                 if args.len() + 1 != info.params.len() {
@@ -118,14 +118,14 @@ impl<'a> Checker<'a> {
                 let bt = self.expr_ty(base)?;
                 if self.expr_ty(index)? != Type::Int {
                     return Err(CheckError {
-                        message: "index must be `int`".into(),
+                        message: "下标类型必须是 `int`".into(),
                         span: *span,
                     });
                 }
                 match bt {
                     Type::Array(e) => Ok(*e),
                     other => Err(CheckError {
-                        message: format!("cannot index `{other}`"),
+                        message: format!("无法对 `{other}` 做下标访问"),
                         span: *span,
                     }),
                 }
@@ -135,7 +135,7 @@ impl<'a> Checker<'a> {
                 match &bt {
                     Type::Struct(n) => self.field_ty(n, name),
                     other => Err(CheckError {
-                        message: format!("cannot access field on `{other}`"),
+                        message: format!("无法在 `{other}` 上访问字段"),
                         span: *span,
                     }),
                 }
@@ -165,12 +165,12 @@ impl<'a> Checker<'a> {
                     .get(&name.name)
                     .cloned()
                     .ok_or_else(|| CheckError {
-                        message: format!("unknown struct `{}`", name.name),
+                        message: format!("未知结构体 `{}`", name.name),
                         span: name.span,
                     })?;
                 if fields.len() != decl.len() {
                     return Err(CheckError {
-                        message: format!("`{}` expects {} field(s)", name.name, decl.len()),
+                        message: format!("`{}` 需要 {} 个字段", name.name, decl.len()),
                         span: *span,
                     });
                 }
@@ -180,7 +180,7 @@ impl<'a> Checker<'a> {
                         .find(|(n, _)| n == &fn_.name)
                         .map(|(_, t)| t.clone())
                         .ok_or_else(|| CheckError {
-                            message: format!("no field `{}` on `{}`", fn_.name, name.name),
+                            message: format!("`{}` 没有字段 `{}`", name.name, fn_.name),
                             span: fn_.span,
                         })?;
                     let got = self.expr_ty(fe)?;
@@ -211,14 +211,14 @@ impl<'a> Checker<'a> {
             "print" => {
                 if args.len() != 1 {
                     return Err(CheckError {
-                        message: "`print` takes 1 argument".into(),
+                        message: "`print` 需要 1 个参数".into(),
                         span,
                     });
                 }
                 let t = self.expr_ty(&args[0])?;
                 if !t.printable() {
                     return Err(CheckError {
-                        message: "cannot print void".into(),
+                        message: "不能 print void".into(),
                         span,
                     });
                 }
@@ -227,14 +227,14 @@ impl<'a> Checker<'a> {
             "len" => {
                 if args.len() != 1 {
                     return Err(CheckError {
-                        message: "`len` takes 1 argument".into(),
+                        message: "`len` 需要 1 个参数".into(),
                         span,
                     });
                 }
                 let t = self.expr_ty(&args[0])?;
                 if !matches!(t, Type::Array(_) | Type::Str) {
                     return Err(CheckError {
-                        message: format!("`len` expects array or string, found `{t}`"),
+                        message: format!("`len` 需要数组或字符串，实际是 `{t}`"),
                         span,
                     });
                 }
@@ -299,7 +299,7 @@ impl<'a> Checker<'a> {
             .get(name)
             .cloned()
             .ok_or_else(|| CheckError {
-                message: format!("undefined function `{name}`"),
+                message: format!("未定义函数 `{name}`"),
                 span,
             })?;
         self.call_info(name, args, &info, span)
@@ -380,34 +380,34 @@ fn bin_result(op: BinOp, lt: &Type, rt: &Type) -> Result<Type, String> {
             if lt == rt && lt.is_numeric() {
                 return Ok(lt.clone());
             }
-            Err(format!("cannot add `{lt}` and `{rt}`"))
+            Err(format!("不能将 `{lt}` 与 `{rt}` 相加"))
         }
         BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
             if lt == rt && lt.is_numeric() {
                 Ok(lt.clone())
             } else {
-                Err(format!("cannot apply arithmetic to `{lt}` and `{rt}`"))
+                Err(format!("不能对 `{lt}` 与 `{rt}` 做算术运算"))
             }
         }
         BinOp::Eq | BinOp::Ne => {
             if lt == rt && matches!(lt, Type::Int | Type::Float | Type::Bool | Type::Str) {
                 Ok(Type::Bool)
             } else {
-                Err(format!("cannot compare `{lt}` with `{rt}`"))
+                Err(format!("不能比较 `{lt}` 与 `{rt}`"))
             }
         }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             if lt == rt && lt.is_numeric() {
                 Ok(Type::Bool)
             } else {
-                Err(format!("cannot order `{lt}` and `{rt}`"))
+                Err(format!("不能比较 `{lt}` 与 `{rt}` 的大小"))
             }
         }
         BinOp::And | BinOp::Or => {
             if lt == &Type::Bool && rt == &Type::Bool {
                 Ok(Type::Bool)
             } else {
-                Err("logical ops need `bool`".into())
+                Err("逻辑运算需要 `bool`".into())
             }
         }
     }

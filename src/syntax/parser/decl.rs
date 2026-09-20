@@ -13,7 +13,7 @@ impl Parser {
             TokenKind::Ident(n) => TypeExpr::Named(n.clone()),
             _ => {
                 return Err(ParseError {
-                    message: format!("expected a type, found {}", t.kind),
+                    message: format!("期望类型，实际是 {}", t.kind),
                     span: t.span,
                 })
             }
@@ -23,7 +23,7 @@ impl Parser {
             self.expect(TokenKind::RBracket, "`]`")?;
             if base.is_void() {
                 return Err(ParseError {
-                    message: "`void[]` is not a type".into(),
+                    message: "`void[]` 不是合法类型".into(),
                     span: t.span,
                 });
             }
@@ -40,14 +40,14 @@ impl Parser {
             TokenKind::Str(s) => s,
             other => {
                 return Err(ParseError {
-                    message: format!("expected string path, found {other}"),
+                    message: format!("期望字符串路径，实际是 {other}"),
                     span: t.span,
                 })
             }
         };
         if path.split('/').any(|s| s == "..") {
             return Err(ParseError {
-                message: "import path must not contain `..`".into(),
+                message: "import 路径不能包含 `..`".into(),
                 span: t.span,
             });
         }
@@ -78,7 +78,7 @@ impl Parser {
             let ty = self.ty()?;
             if ty.is_void() {
                 return Err(ParseError {
-                    message: "field type cannot be void".into(),
+                    message: "字段类型不能是 void".into(),
                     span: fname.span,
                 });
             }

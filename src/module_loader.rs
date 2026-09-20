@@ -27,23 +27,17 @@ use crate::syntax::parser::Parser;
 
 /// 单文件：词法 + 语法 → AST（错误带 `file:line:col`）。
 fn parse_src(file: &str, src: &str) -> Result<Program, String> {
-    let toks = Lexer::new(src).tokenize().map_err(|e| {
-        format!(
-            "{file}:{}:{}: error: {}",
-            e.span.line, e.span.col, e.message
-        )
-    })?;
-    Parser::new(toks).parse_program().map_err(|e| {
-        format!(
-            "{file}:{}:{}: error: {}",
-            e.span.line, e.span.col, e.message
-        )
-    })
+    let toks = Lexer::new(src)
+        .tokenize()
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))?;
+    Parser::new(toks)
+        .parse_program()
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))
 }
 
 fn resolve(base_file: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.split('/').any(|s| s == "..") {
-        return Err(format!("import path must not contain `..`: {rel}"));
+        return Err(format!("import 路径不能包含 `..`: {rel}"));
     }
     let mut p = base_file
         .parent()
@@ -60,10 +54,10 @@ fn resolve(base_file: &Path, rel: &str) -> Result<PathBuf, String> {
 fn load(path: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<Item>) -> Result<(), String> {
     let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if stack.iter().any(|p| p == &canon) {
-        return Err(format!("cyclic import: {}", path.display()));
+        return Err(format!("循环 import: {}", path.display()));
     }
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
+    let src =
+        std::fs::read_to_string(path).map_err(|e| format!("无法读取 `{}`: {e}", path.display()))?;
     let file = path.display().to_string();
     let prog = parse_src(&file, &src)?;
 
@@ -136,12 +130,12 @@ pub fn compile_path(path: &Path) -> Result<Module, String> {
     let label = path.display().to_string();
     let consts = Checker::new(&program).check().map_err(|e| {
         format!(
-            "{label}:{}:{}: error: {}",
+            "{label}:{}:{}: 错误: {}",
             e.span.line, e.span.col, e.message
         )
     })?;
     Compiler::compile(&program, consts)
-        .map_err(|e| format!("{label}:{}:{}: error: {}", e.line, e.col, e.message))
+        .map_err(|e| format!("{label}:{}:{}: 错误: {}", e.line, e.col, e.message))
 }
 
 /// 编译并执行文件；诊断前缀为文件路径。
@@ -152,9 +146,9 @@ pub fn run_path(path: &Path) -> Result<Vec<String>, String> {
     let label = path.display().to_string();
     vm.run().map_err(|e| {
         if e.line == 0 {
-            format!("{label}: runtime error: {}", e.message)
+            format!("{label}: 运行时错误: {}", e.message)
         } else {
-            format!("{label}:{}: runtime error: {}", e.line, e.message)
+            format!("{label}:{}: 运行时错误: {}", e.line, e.message)
         }
     })
 }

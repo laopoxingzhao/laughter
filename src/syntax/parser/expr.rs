@@ -349,7 +349,7 @@ impl Parser {
                 Ok(Expr::Var { name: ident })
             }
             other => Err(ParseError {
-                message: format!("expected expression, found {other}"),
+                message: format!("期望表达式，实际是 {other}"),
                 span: t.span,
             }),
         }

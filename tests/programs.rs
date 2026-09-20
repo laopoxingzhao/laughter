@@ -130,7 +130,7 @@ fn type_errors() {
 /// 测：除零与数组越界等运行时错误。
 #[test]
 fn runtime_errors() {
-    assert!(run_source("print(1 / 0);").unwrap_err().contains("zero"));
+    assert!(run_source("print(1 / 0);").unwrap_err().contains("零"));
     assert!(run_source("let a = [1]; print(a[3]);").is_err());
 }
 

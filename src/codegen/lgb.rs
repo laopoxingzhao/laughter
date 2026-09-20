@@ -64,7 +64,7 @@ pub struct BytecodeError {
 
 impl std::fmt::Display for BytecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "bytecode error: {}", self.message)
+        write!(f, "字节码错误: {}", self.message)
     }
 }
 
@@ -252,9 +252,9 @@ pub fn exec_module(module: &Module) -> Result<Vec<String>, String> {
     let mut vm = Vm::new(module);
     vm.run().map_err(|e| {
         if e.line == 0 {
-            format!("runtime error: {}", e.message)
+            format!("运行时错误: {}", e.message)
         } else {
-            format!("runtime error at line {}: {}", e.line, e.message)
+            format!("运行时错误（第 {} 行）: {}", e.line, e.message)
         }
     })
 }

@@ -106,7 +106,7 @@ impl<'a> Checker<'a> {
     fn declare_struct(&mut self, s: &StructDecl) -> Result<(), CheckError> {
         if self.structs.contains_key(&s.name.name) {
             return Err(CheckError {
-                message: format!("struct `{}` already defined", s.name.name),
+                message: format!("结构体 `{}` 重复定义", s.name.name),
                 span: s.name.span,
             });
         }
@@ -116,7 +116,7 @@ impl<'a> Checker<'a> {
             let ty = self.ty(&f.ty, f.name.span)?;
             if seen.insert(f.name.name.clone(), ()).is_some() {
                 return Err(CheckError {
-                    message: format!("duplicate field `{}`", f.name.name),
+                    message: format!("字段 `{}` 重复", f.name.name),
                     span: f.name.span,
                 });
             }
@@ -133,14 +133,14 @@ impl<'a> Checker<'a> {
             || self.consts.contains_key(&c.name.name)
         {
             return Err(CheckError {
-                message: format!("`{}` already defined", c.name.name),
+                message: format!("`{}` 已定义", c.name.name),
                 span: c.name.span,
             });
         }
         let declared = self.ty(&c.ty, c.name.span)?;
         if !matches!(declared, Type::Int | Type::Float | Type::Bool | Type::Str) {
             return Err(CheckError {
-                message: format!("const type must be a scalar, found `{declared}`"),
+                message: format!("const 类型必须是标量，实际是 `{declared}`"),
                 span: c.span,
             });
         }
@@ -170,7 +170,7 @@ impl<'a> Checker<'a> {
     fn declare_fun(&mut self, f: &FunDecl) -> Result<(), CheckError> {
         if f.on_type.is_none() && BUILTINS.contains(&f.name.name.as_str()) {
             return Err(CheckError {
-                message: format!("`{}` is a builtin", f.name.name),
+                message: format!("`{}` 是内建函数，不可重定义", f.name.name),
                 span: f.name.span,
             });
         }
@@ -191,26 +191,26 @@ impl<'a> Checker<'a> {
         if let Some(on) = &f.on_type {
             if !self.structs.contains_key(&on.name) {
                 return Err(CheckError {
-                    message: format!("unknown struct `{}`", on.name),
+                    message: format!("未知结构体 `{}`", on.name),
                     span: on.span,
                 });
             }
             if f.params.is_empty() || params[0] != Type::Struct(on.name.clone()) {
                 return Err(CheckError {
-                    message: format!("method receiver must be `{}`", on.name),
+                    message: format!("方法接收者类型必须是 `{}`", on.name),
                     span: f.name.span,
                 });
             }
             if self.functions.contains_key(&f.name.name) {
                 return Err(CheckError {
-                    message: format!("method `{}` conflicts with a function", f.name.name),
+                    message: format!("方法 `{}` 与同名函数冲突", f.name.name),
                     span: f.name.span,
                 });
             }
             let e = self.methods.entry(on.name.clone()).or_default();
             if e.contains_key(&f.name.name) {
                 return Err(CheckError {
-                    message: format!("method `{}` already defined", f.name.name),
+                    message: format!("方法 `{}` 已定义", f.name.name),
                     span: f.name.span,
                 });
             }
@@ -220,7 +220,7 @@ impl<'a> Checker<'a> {
 
         if f.name.name == "main" && (!f.params.is_empty() || !matches!(f.ret, TypeExpr::Void)) {
             return Err(CheckError {
-                message: "`main` must be `fun main() -> void`".into(),
+                message: "`main` 必须是 `fun main() -> void`".into(),
                 span: f.name.span,
             });
         }
@@ -228,7 +228,7 @@ impl<'a> Checker<'a> {
             || self.methods.values().any(|m| m.contains_key(&f.name.name))
         {
             return Err(CheckError {
-                message: format!("function `{}` already defined", f.name.name),
+                message: format!("函数 `{}` 重复定义", f.name.name),
                 span: f.name.span,
             });
         }
@@ -289,7 +289,7 @@ impl<'a> Checker<'a> {
         let sc = self.scopes.last_mut().unwrap();
         if sc.contains_key(n) {
             return Err(CheckError {
-                message: format!("variable `{n}` already declared in this scope"),
+                message: format!("变量 `{n}` 在本作用域已声明"),
                 span,
             });
         }
@@ -306,7 +306,7 @@ impl<'a> Checker<'a> {
                     .map(|(_, t)| t.clone())
             })
             .ok_or_else(|| CheckError {
-                message: format!("struct `{st}` has no field `{}`", field.name),
+                message: format!("结构体 `{st}` 没有字段 `{}`", field.name),
                 span: field.span,
             })
     }

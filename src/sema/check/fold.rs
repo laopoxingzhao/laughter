@@ -22,7 +22,7 @@ impl<'a> Checker<'a> {
                 .get(&name.name)
                 .cloned()
                 .ok_or_else(|| CheckError {
-                    message: format!("`{}` is not a compile-time constant", name.name),
+                    message: format!("`{}` 不是编译期常量", name.name),
                     span: name.span,
                 }),
             Expr::Unary { op, expr, span } => {

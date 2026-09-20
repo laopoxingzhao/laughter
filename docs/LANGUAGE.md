@@ -151,8 +151,8 @@ expr;                   // 表达式语句
 
 ## 8. 诊断
 
-- 编译期：`file:line:col: error: message`
-- 运行时：`file:line: runtime error: message`（无行号时省略行号段）
+- 编译期：`file:line:col: 错误: message`（message 为中文）
+- 运行时：`file:line: 运行时错误: message`（无行号时省略行号段）
 
 ## 9. CLI
 

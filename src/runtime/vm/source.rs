@@ -4,18 +4,12 @@ use super::*;
 fn parse(src: &str, file: &str) -> Result<crate::syntax::ast::Program, String> {
     use crate::syntax::lexer::Lexer;
     use crate::syntax::parser::Parser;
-    let toks = Lexer::new(src).tokenize().map_err(|e| {
-        format!(
-            "{file}:{}:{}: error: {}",
-            e.span.line, e.span.col, e.message
-        )
-    })?;
-    Parser::new(toks).parse_program().map_err(|e| {
-        format!(
-            "{file}:{}:{}: error: {}",
-            e.span.line, e.span.col, e.message
-        )
-    })
+    let toks = Lexer::new(src)
+        .tokenize()
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))?;
+    Parser::new(toks)
+        .parse_program()
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))
 }
 
 /// 单文件字符串 → Module（测试常用）。步骤同 compile_source_file。
@@ -33,14 +27,11 @@ pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
             "{file}: error: `import` requires a file path — use `laughter run <file.lg>`"
         ));
     }
-    let consts = Checker::new(&program).check().map_err(|e| {
-        format!(
-            "{file}:{}:{}: error: {}",
-            e.span.line, e.span.col, e.message
-        )
-    })?;
+    let consts = Checker::new(&program)
+        .check()
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))?;
     Compiler::compile(&program, consts)
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))
+        .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.line, e.col, e.message))
 }
 
 /// 单文件源码直接执行（无 import）。
@@ -53,9 +44,9 @@ pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
     let mut vm = Vm::new(&module);
     vm.run().map_err(|e| {
         if e.line == 0 {
-            format!("{file}: runtime error: {}", e.message)
+            format!("{file}: 运行时错误: {}", e.message)
         } else {
-            format!("{file}:{}: runtime error: {}", e.line, e.message)
+            format!("{file}:{}: 运行时错误: {}", e.line, e.message)
         }
     })
 }

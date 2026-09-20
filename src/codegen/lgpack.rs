@@ -117,8 +117,8 @@ pub fn pack_program(
     resources: &[std::path::PathBuf],
     entry_name: &str,
 ) -> Result<(), PackError> {
-    let module = compile_file(&main_lg.display().to_string())
-        .map_err(|e| err(format!("compile failed: {e}")))?;
+    let module =
+        compile_file(&main_lg.display().to_string()).map_err(|e| err(format!("编译失败: {e}")))?;
     let lgb = encode_module(&module).map_err(|e| err(e.message))?;
     let manifest = build_manifest(entry_name);
 

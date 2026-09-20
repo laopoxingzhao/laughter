@@ -71,14 +71,14 @@ impl<'m> Vm<'m> {
     fn push_frame(&mut self, func: usize) -> Result<(), VmError> {
         if self.frames.len() >= self.max_depth {
             return Err(VmError {
-                message: format!("stack overflow (recursion depth {})", self.max_depth),
+                message: format!("栈溢出（递归深度 {}）", self.max_depth),
                 line: 0,
             });
         }
         let argc = self.module.functions[func].arity as usize;
         if self.stack.len() < argc {
             return Err(VmError {
-                message: "missing arguments".into(),
+                message: "调用参数缺失".into(),
                 line: 0,
             });
         }
@@ -103,7 +103,7 @@ impl<'m> Vm<'m> {
         let code = &self.module.functions[f.func].chunk.code;
         if at + 1 >= code.len() {
             return Err(VmError {
-                message: "truncated instruction".into(),
+                message: "指令被截断".into(),
                 line: 0,
             });
         }
@@ -113,14 +113,14 @@ impl<'m> Vm<'m> {
     /// 弹出栈顶值；栈空则报 stack underflow。
     fn pop(&mut self, line: u32) -> Result<Value, VmError> {
         self.stack.pop().ok_or_else(|| VmError {
-            message: "stack underflow".into(),
+            message: "栈下溢".into(),
             line,
         })
     }
 
     fn peek(&self, line: u32) -> Result<&Value, VmError> {
         self.stack.last().ok_or_else(|| VmError {
-            message: "stack underflow".into(),
+            message: "栈下溢".into(),
             line,
         })
     }

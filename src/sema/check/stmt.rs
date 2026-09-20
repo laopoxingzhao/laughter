@@ -13,7 +13,7 @@ impl<'a> Checker<'a> {
                         self.ty(t, l.name.span)?
                     } else {
                         return Err(CheckError {
-                            message: "empty `[]` requires a type annotation".into(),
+                            message: "空数组 `[]` 需要类型标注，如 `int[]`".into(),
                             span: l.name.span,
                         });
                     }
@@ -25,13 +25,13 @@ impl<'a> Checker<'a> {
                     if empty {
                         if !matches!(t, Type::Array(_)) {
                             return Err(CheckError {
-                                message: format!("`[]` needs array type, got `{t}`"),
+                                message: format!("`[]` 需要数组类型，实际是 `{t}`"),
                                 span: l.span,
                             });
                         }
                     } else if t != vt {
                         return Err(CheckError {
-                            message: format!("let `{}` declared `{t}` but got `{vt}`", l.name.name),
+                            message: format!("let `{}` 标注 `{t}`，但初始值是 `{vt}`", l.name.name),
                             span: l.span,
                         });
                     }
@@ -44,19 +44,19 @@ impl<'a> Checker<'a> {
             Stmt::Assign(a) => {
                 if self.consts.contains_key(&a.name.name) {
                     return Err(CheckError {
-                        message: format!("cannot assign to const `{}`", a.name.name),
+                        message: format!("不能给 const `{}` 赋值", a.name.name),
                         span: a.span,
                     });
                 }
                 let mut cur = self.lookup(&a.name.name).ok_or_else(|| CheckError {
-                    message: format!("undefined variable `{}`", a.name.name),
+                    message: format!("未定义的变量 `{}`", a.name.name),
                     span: a.name.span,
                 })?;
                 let vt = self.expr_ty(&a.value)?;
                 if let Some(idx) = &a.index {
                     if self.expr_ty(idx)? != Type::Int {
                         return Err(CheckError {
-                            message: "index must be `int`".into(),
+                            message: "下标类型必须是 `int`".into(),
                             span: idx.span(),
                         });
                     }
@@ -64,7 +64,7 @@ impl<'a> Checker<'a> {
                         Type::Array(e) => cur = *e,
                         other => {
                             return Err(CheckError {
-                                message: format!("cannot index `{other}`"),
+                                message: format!("无法对 `{other}` 做下标访问"),
                                 span: a.name.span,
                             })
                         }
@@ -75,7 +75,7 @@ impl<'a> Checker<'a> {
                         Type::Struct(n) => cur = self.field_ty(n, f)?,
                         other => {
                             return Err(CheckError {
-                                message: format!("cannot access field on `{other}`"),
+                                message: format!("无法在 `{other}` 上访问字段"),
                                 span: f.span,
                             })
                         }
@@ -83,7 +83,7 @@ impl<'a> Checker<'a> {
                 }
                 if vt != cur {
                     return Err(CheckError {
-                        message: format!("cannot assign `{vt}` to `{cur}`"),
+                        message: format!("不能把 `{vt}` 赋给 `{cur}`"),
                         span: a.span,
                     });
                 }
@@ -92,7 +92,7 @@ impl<'a> Checker<'a> {
             Stmt::While(w) => {
                 if self.expr_ty(&w.cond)? != Type::Bool {
                     return Err(CheckError {
-                        message: "while condition must be `bool`".into(),
+                        message: "while 条件必须是 `bool`".into(),
                         span: w.cond.span(),
                     });
                 }
@@ -105,7 +105,7 @@ impl<'a> Checker<'a> {
                     if let Expr::Range { start, end, span } = &f.iter {
                         if self.expr_ty(start)? != Type::Int || self.expr_ty(end)? != Type::Int {
                             return Err(CheckError {
-                                message: "range bounds must be `int`".into(),
+                                message: "范围两端类型必须是 `int`".into(),
                                 span: *span,
                             });
                         }
@@ -128,7 +128,7 @@ impl<'a> Checker<'a> {
                         Type::Array(e) => *e,
                         other => {
                             return Err(CheckError {
-                                message: format!("for-in expects array, found `{other}`"),
+                                message: format!("for-in 需要数组，实际是 `{other}`"),
                                 span: f.iter.span(),
                             })
                         }
@@ -150,7 +150,7 @@ impl<'a> Checker<'a> {
             Stmt::Break(sp) | Stmt::Continue(sp) => {
                 if self.loop_depth == 0 {
                     return Err(CheckError {
-                        message: "`break`/`continue` outside loop".into(),
+                        message: "`break`/`continue` 只能用在循环内".into(),
                         span: *sp,
                     });
                 }
@@ -158,7 +158,7 @@ impl<'a> Checker<'a> {
             Stmt::Return(r) => {
                 if self.top_level {
                     return Err(CheckError {
-                        message: "`return` outside function".into(),
+                        message: "`return` 只能用在函数内".into(),
                         span: r.span,
                     });
                 }
@@ -166,13 +166,13 @@ impl<'a> Checker<'a> {
                     None if self.ret == Type::Void => {}
                     None => {
                         return Err(CheckError {
-                            message: format!("must return `{}`", self.ret),
+                            message: format!("此处必须返回 `{}`", self.ret),
                             span: r.span,
                         })
                     }
                     Some(_) if self.ret == Type::Void => {
                         return Err(CheckError {
-                            message: "void function cannot return a value".into(),
+                            message: "void 函数不能返回值".into(),
                             span: r.span,
                         })
                     }
@@ -180,7 +180,7 @@ impl<'a> Checker<'a> {
                         let t = self.expr_ty(e)?;
                         if t != self.ret {
                             return Err(CheckError {
-                                message: format!("expected `{}`, found `{t}`", self.ret),
+                                message: format!("期望返回类型 `{}`，实际是 `{t}`", self.ret),
                                 span: r.span,
                             });
                         }
@@ -198,7 +198,7 @@ impl<'a> Checker<'a> {
     pub(crate) fn check_if(&mut self, i: &IfStmt) -> Result<(), CheckError> {
         if self.expr_ty(&i.cond)? != Type::Bool {
             return Err(CheckError {
-                message: "if condition must be `bool`".into(),
+                message: "if 条件必须是 `bool`".into(),
                 span: i.cond.span(),
             });
         }

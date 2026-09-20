@@ -24,7 +24,7 @@ impl<'m> Vm<'m> {
             let code_len = self.module.functions[func].chunk.code.len();
             if ip >= code_len {
                 return Err(VmError {
-                    message: "ip out of range".into(),
+                    message: "指令指针越界".into(),
                     line: 0,
                 });
             }
@@ -33,7 +33,7 @@ impl<'m> Vm<'m> {
             let line = self.line();
             let Some(op) = Op::from_u8(byte) else {
                 return Err(VmError {
-                    message: format!("bad opcode {byte}"),
+                    message: format!("未知操作码 {byte}"),
                     line,
                 });
             };
@@ -83,7 +83,7 @@ impl<'m> Vm<'m> {
                         Value::Str(s) => s.to_string(),
                         _ => {
                             return Err(VmError {
-                                message: "bad field constant".into(),
+                                message: "字段名常量无效".into(),
                                 line,
                             })
                         }
@@ -94,20 +94,20 @@ impl<'m> Vm<'m> {
                         Some(Value::Struct(s)) => {
                             if !s.set(&fname, val) {
                                 return Err(VmError {
-                                    message: format!("no field `{fname}`"),
+                                    message: format!("没有字段 `{fname}`"),
                                     line,
                                 });
                             }
                         }
                         Some(other) => {
                             return Err(VmError {
-                                message: format!("cannot set field on {}", other.type_name()),
+                                message: format!("无法在 {} 上设置字段", other.type_name()),
                                 line,
                             })
                         }
                         None => {
                             return Err(VmError {
-                                message: "bad local slot".into(),
+                                message: "局部槽下标无效".into(),
                                 line,
                             })
                         }
@@ -129,7 +129,7 @@ impl<'m> Vm<'m> {
                         Value::Float(n) => Value::Float(-n),
                         o => {
                             return Err(VmError {
-                                message: format!("cannot negate {}", o.type_name()),
+                                message: format!("无法对 {} 取负", o.type_name()),
                                 line,
                             })
                         }
@@ -143,7 +143,7 @@ impl<'m> Vm<'m> {
                         Value::Bool(b) => self.stack.push(Value::Bool(!b)),
                         o => {
                             return Err(VmError {
-                                message: format!("cannot apply `!` to {}", o.type_name()),
+                                message: format!("无法对 {} 使用 `!`", o.type_name()),
                                 line,
                             })
                         }
@@ -185,7 +185,7 @@ impl<'m> Vm<'m> {
                         Value::Bool(b) => *b,
                         o => {
                             return Err(VmError {
-                                message: format!("condition must be bool, got {}", o.type_name()),
+                                message: format!("条件必须是 bool，实际是 {}", o.type_name()),
                                 line,
                             })
                         }
@@ -212,14 +212,14 @@ impl<'m> Vm<'m> {
                         Value::Str(s) => s.to_string(),
                         _ => {
                             return Err(VmError {
-                                message: "bad method name".into(),
+                                message: "方法名常量无效".into(),
                                 line,
                             })
                         }
                     };
                     if self.stack.len() < argc + 1 {
                         return Err(VmError {
-                            message: "method call underflow".into(),
+                            message: "方法调用栈下溢".into(),
                             line,
                         });
                     }
@@ -228,7 +228,7 @@ impl<'m> Vm<'m> {
                         Value::Struct(s) => s.name.clone(),
                         _ => {
                             return Err(VmError {
-                                message: "receiver is not a struct".into(),
+                                message: "方法接收者不是结构体".into(),
                                 line,
                             })
                         }
@@ -240,7 +240,7 @@ impl<'m> Vm<'m> {
                         .iter()
                         .position(|f| f.name == full)
                         .ok_or_else(|| VmError {
-                            message: format!("undefined method `{full}`"),
+                            message: format!("未定义方法 `{full}`"),
                             line,
                         })?;
                     self.frames.last_mut().unwrap().ip = ip + 5;
@@ -255,7 +255,7 @@ impl<'m> Vm<'m> {
                     if !f.is_void {
                         if self.stack.len() <= fr.base {
                             return Err(VmError {
-                                message: format!("`{}` returned without value", f.name),
+                                message: format!("函数 `{}` 缺少返回值", f.name),
                                 line,
                             });
                         }
@@ -274,7 +274,7 @@ impl<'m> Vm<'m> {
                     let n = self.u16(ip + 1)? as usize;
                     if self.stack.len() < n {
                         return Err(VmError {
-                            message: "missing array elements".into(),
+                            message: "数组元素缺失".into(),
                             line,
                         });
                     }
@@ -291,14 +291,14 @@ impl<'m> Vm<'m> {
                     let idx = as_idx(&i, line)?;
                     let Value::Array(h) = a else {
                         return Err(VmError {
-                            message: format!("cannot index {}", a.type_name()),
+                            message: format!("无法对 {} 做下标访问", a.type_name()),
                             line,
                         });
                     };
                     let b = h.borrow();
                     if idx < 0 || idx as usize >= b.len() {
                         return Err(VmError {
-                            message: format!("array index {idx} out of bounds (len {})", b.len()),
+                            message: format!("数组下标 {idx} 越界（长度 {}）", b.len()),
                             line,
                         });
                     }
@@ -314,14 +314,14 @@ impl<'m> Vm<'m> {
                     let idx = as_idx(&i, line)?;
                     let Value::Array(h) = a else {
                         return Err(VmError {
-                            message: format!("cannot index {}", a.type_name()),
+                            message: format!("无法对 {} 做下标访问", a.type_name()),
                             line,
                         });
                     };
                     let mut b = h.borrow_mut();
                     if idx < 0 || idx as usize >= b.len() {
                         return Err(VmError {
-                            message: format!("array index {idx} out of bounds (len {})", b.len()),
+                            message: format!("数组下标 {idx} 越界（长度 {}）", b.len()),
                             line,
                         });
                     }
@@ -334,7 +334,7 @@ impl<'m> Vm<'m> {
                     let n = self.u16(ip + 3)? as usize;
                     if self.stack.len() < n {
                         return Err(VmError {
-                            message: "missing struct fields".into(),
+                            message: "结构体字段缺失".into(),
                             line,
                         });
                     }
@@ -355,7 +355,7 @@ impl<'m> Vm<'m> {
                         Value::Str(s) => s.to_string(),
                         _ => {
                             return Err(VmError {
-                                message: "bad field constant".into(),
+                                message: "字段名常量无效".into(),
                                 line,
                             })
                         }
@@ -363,12 +363,12 @@ impl<'m> Vm<'m> {
                     let o = self.pop(line)?;
                     let Value::Struct(s) = o else {
                         return Err(VmError {
-                            message: format!("cannot get field on {}", o.type_name()),
+                            message: format!("无法在 {} 上读取字段", o.type_name()),
                             line,
                         });
                     };
                     let v = s.get(&fname).cloned().ok_or_else(|| VmError {
-                        message: format!("no field `{fname}`"),
+                        message: format!("没有字段 `{fname}`"),
                         line,
                     })?;
                     self.stack.push(v);
@@ -381,7 +381,7 @@ impl<'m> Vm<'m> {
                         Value::Str(s) => s.to_string(),
                         _ => {
                             return Err(VmError {
-                                message: "bad field constant".into(),
+                                message: "字段名常量无效".into(),
                                 line,
                             })
                         }
@@ -396,7 +396,7 @@ impl<'m> Vm<'m> {
                     };
                     if !s.set(&fname, val) {
                         return Err(VmError {
-                            message: format!("no field `{fname}`"),
+                            message: format!("没有字段 `{fname}`"),
                             line,
                         });
                     }
@@ -434,7 +434,7 @@ impl<'m> Vm<'m> {
                     let a = self.pop(line)?;
                     let Value::Array(h) = a else {
                         return Err(VmError {
-                            message: format!("`push` expects array, got {}", a.type_name()),
+                            message: format!("`push` 需要数组，实际是 {}", a.type_name()),
                             line,
                         });
                     };
@@ -446,12 +446,12 @@ impl<'m> Vm<'m> {
                     let a = self.pop(line)?;
                     let Value::Array(h) = a else {
                         return Err(VmError {
-                            message: format!("`pop` expects array, got {}", a.type_name()),
+                            message: format!("`pop` 需要数组，实际是 {}", a.type_name()),
                             line,
                         });
                     };
                     let v = h.borrow_mut().pop().ok_or_else(|| VmError {
-                        message: "pop from empty array".into(),
+                        message: "不能对空数组执行 pop".into(),
                         line,
                     })?;
                     self.stack.push(v);
@@ -475,12 +475,12 @@ impl<'m> Vm<'m> {
                     let s = self.pop(line)?;
                     let (Value::Str(s), Value::Int(i)) = (&s, &i) else {
                         return Err(VmError {
-                            message: "str_at expects (string, int)".into(),
+                            message: "`str_at` 需要 (string, int)".into(),
                             line,
                         });
                     };
                     let ch = s.chars().nth(*i as usize).ok_or_else(|| VmError {
-                        message: format!("str_at index {i} out of bounds"),
+                        message: format!("`str_at` 下标 {i} 越界"),
                         line,
                     })?;
                     self.stack
@@ -494,13 +494,13 @@ impl<'m> Vm<'m> {
                     let s = self.pop(line)?;
                     let (Value::Str(s), Value::Int(st), Value::Int(n)) = (&s, &st, &n) else {
                         return Err(VmError {
-                            message: "str_sub expects (string, int, int)".into(),
+                            message: "`str_sub` 需要 (string, int, int)".into(),
                             line,
                         });
                     };
                     if *st < 0 || *n < 0 {
                         return Err(VmError {
-                            message: "str_sub negative index".into(),
+                            message: "`str_sub` 下标不能为负".into(),
                             line,
                         });
                     }
@@ -535,7 +535,7 @@ fn as_idx(v: &Value, line: u32) -> Result<i64, VmError> {
     match v {
         Value::Int(n) => Ok(*n),
         o => Err(VmError {
-            message: format!("index must be int, got {}", o.type_name()),
+            message: format!("下标必须是 int，实际是 {}", o.type_name()),
             line,
         }),
     }
@@ -557,11 +557,11 @@ fn arith(op: Op, a: Value, b: Value, line: u32) -> Result<Value, VmError> {
                 Op::Div if y != 0 => Ok(Value::Int(x.wrapping_div(y))),
                 Op::Rem if y != 0 => Ok(Value::Int(x.wrapping_rem(y))),
                 Op::Div | Op::Rem => Err(VmError {
-                    message: "division by zero".into(),
+                    message: "除数不能为零".into(),
                     line,
                 }),
                 _ => Err(VmError {
-                    message: "bad int op".into(),
+                    message: "非法的整数运算".into(),
                     line,
                 }),
             }
@@ -575,11 +575,11 @@ fn arith(op: Op, a: Value, b: Value, line: u32) -> Result<Value, VmError> {
                 Op::Div if y != 0.0 => Ok(Value::Float(x / y)),
                 Op::Rem if y != 0.0 => Ok(Value::Float(x % y)),
                 Op::Div | Op::Rem => Err(VmError {
-                    message: "division by zero".into(),
+                    message: "除数不能为零".into(),
                     line,
                 }),
                 _ => Err(VmError {
-                    message: "bad float op".into(),
+                    message: "非法的浮点运算".into(),
                     line,
                 }),
             }
@@ -603,7 +603,7 @@ fn val_eq(a: &Value, b: &Value, line: u32) -> Result<bool, VmError> {
         (Value::Str(x), Value::Str(y)) => x == y,
         _ => {
             return Err(VmError {
-                message: format!("cannot compare {} and {}", a.type_name(), b.type_name()),
+                message: format!("无法比较 {} 与 {}", a.type_name(), b.type_name()),
                 line,
             })
         }
@@ -615,13 +615,13 @@ fn cmp(a: &Value, b: &Value, line: u32) -> Result<i32, VmError> {
         (Value::Int(x), Value::Int(y)) => x.cmp(y) as i32,
         (Value::Float(x), Value::Float(y)) => {
             x.partial_cmp(y).map(|o| o as i32).ok_or_else(|| VmError {
-                message: "cannot compare NaN".into(),
+                message: "无法比较 NaN".into(),
                 line,
             })?
         }
         _ => {
             return Err(VmError {
-                message: format!("cannot order {} and {}", a.type_name(), b.type_name()),
+                message: format!("无法比较大小 {} 与 {}", a.type_name(), b.type_name()),
                 line,
             })
         }

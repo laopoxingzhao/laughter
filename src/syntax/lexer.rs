@@ -216,7 +216,7 @@ impl<'a> Lexer<'a> {
                     TokenKind::AndAnd
                 } else {
                     return Err(LexError {
-                        message: "expected `&&`".into(),
+                        message: "期望 `&&`".into(),
                         span,
                     });
                 }
@@ -228,7 +228,7 @@ impl<'a> Lexer<'a> {
                     TokenKind::OrOr
                 } else {
                     return Err(LexError {
-                        message: "expected `||`".into(),
+                        message: "期望 `||`".into(),
                         span,
                     });
                 }
@@ -244,7 +244,7 @@ impl<'a> Lexer<'a> {
             }
             _ => {
                 return Err(LexError {
-                    message: format!("unexpected character `{}`", c as char),
+                    message: format!("意外的字符 `{}`", c as char),
                     span,
                 })
             }
@@ -307,13 +307,13 @@ impl<'a> Lexer<'a> {
         let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
         if is_float {
             let n: f64 = text.parse().map_err(|_| LexError {
-                message: format!("invalid float `{text}`"),
+                message: format!("无效的浮点数 `{text}`"),
                 span,
             })?;
             Ok(Token::new(TokenKind::Float(n), span))
         } else {
             let n: i64 = text.parse().map_err(|_| LexError {
-                message: format!("invalid integer `{text}`"),
+                message: format!("无效的整数 `{text}`"),
                 span,
             })?;
             Ok(Token::new(TokenKind::Int(n), span))
@@ -328,7 +328,7 @@ impl<'a> Lexer<'a> {
             match self.bump() {
                 None => {
                     return Err(LexError {
-                        message: "unterminated string".into(),
+                        message: "字符串未闭合".into(),
                         span,
                     })
                 }
@@ -340,7 +340,7 @@ impl<'a> Lexer<'a> {
                     Some(b'"') => s.push('"'),
                     _ => {
                         return Err(LexError {
-                            message: "invalid escape".into(),
+                            message: "无效的转义字符".into(),
                             span,
                         })
                     }
@@ -355,7 +355,7 @@ impl<'a> Lexer<'a> {
                         Ok(t) => s.push_str(t),
                         Err(_) => {
                             return Err(LexError {
-                                message: "invalid UTF-8 in string".into(),
+                                message: "字符串中含无效 UTF-8".into(),
                                 span,
                             })
                         }
