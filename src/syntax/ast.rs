@@ -5,7 +5,17 @@
 
 use crate::syntax::token::Span;
 
-/// 源码里写出来的类型标注（尚未解析成语义类型 `Type`）。
+/// 源码里写出来的类型标注（还没做语义检查）。
+///
+/// | 变体 | 中文 | 源码例子 |
+/// |------|------|----------|
+/// | `Int` | 整数 | `int` |
+/// | `Float` | 浮点 | `float` |
+/// | `Bool` | 布尔 | `bool` |
+/// | `String` | 字符串 | `string` |
+/// | `Void` | 无返回值 | `void` |
+/// | `Array(元素类型)` | 数组 | `int[]` |
+/// | `Named(名字)` | 具名类型（结构体） | `Point` |
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeExpr {
     Int,
@@ -129,7 +139,21 @@ pub struct FunDecl {
     pub span: Span,
 }
 
-/// 表达式节点。`Range` 仅应出现在 `for-in` 的迭代式中。
+/// 表达式：会「算出一个值」的语法。
+///
+/// | 变体 | 中文 | 例子 |
+/// |------|------|------|
+/// | `Int` `Float` `Bool` `Str` | 字面量 | `42` `1.5` `true` `"hi"` |
+/// | `Var` | 变量 | `x` |
+/// | `Unary` | 一元运算 | `-x` `!f` |
+/// | `Binary` | 二元运算 | `a + b`（lhs 左、rhs 右） |
+/// | `Call` | 函数调用 | `f(1)` |
+/// | `MethodCall` | 方法调用 | `p.sum()` |
+/// | `Index` | 下标 | `a[0]` |
+/// | `Field` | 字段 | `p.x` |
+/// | `Array` | 数组字面量 | `[1,2]` |
+/// | `StructLit` | 结构体字面量 | `Point{x:1,y:2}` |
+/// | `Range` | 范围 | `0..n`（仅 for） |
 #[derive(Debug, Clone)]
 pub enum Expr {
     Int {
