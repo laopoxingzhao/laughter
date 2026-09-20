@@ -6,11 +6,13 @@ impl<'a> Checker<'a> {
     /// 步骤：按节点种类处理 → 字面量直接给类型；变量查作用域/const；
     ///      二元运算调用 bin_result；调用检查签名与实参。
     pub(crate) fn expr_ty(&mut self, e: &Expr) -> Result<Type, CheckError> {
+        // 按 AST 节点种类分支：每种节点如何得到类型
         match e {
             Expr::Int { .. } => Ok(Type::Int),
             Expr::Float { .. } => Ok(Type::Float),
             Expr::Bool { .. } => Ok(Type::Bool),
             Expr::Str { .. } => Ok(Type::Str),
+            // 变量：先查 const 表，再查作用域栈（内层优先）
             Expr::Var { name } => {
                 if let Some((t, _)) = self.consts.get(&name.name) {
                     return Ok(t.clone());
@@ -29,6 +31,7 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Type::Array(Box::new(Type::Int)))
             }
+            // 一元：先递归求操作数类型，再按 - / ! 校验
             Expr::Unary { op, expr, span } => {
                 let t = self.expr_ty(expr)?;
                 match op {
@@ -40,6 +43,7 @@ impl<'a> Checker<'a> {
                     }),
                 }
             }
+            // 二元：左右都要有类型，再交给 bin_result 判断能否运算
             Expr::Binary { op, lhs, rhs, span } => {
                 let lt = self.expr_ty(lhs)?;
                 let rt = self.expr_ty(rhs)?;
@@ -114,6 +118,7 @@ impl<'a> Checker<'a> {
                 }
                 Ok(info.ret)
             }
+            // 下标：基必须是数组，下标必须是 int，结果是元素类型
             Expr::Index { base, index, span } => {
                 let bt = self.expr_ty(base)?;
                 if self.expr_ty(index)? != Type::Int {
@@ -130,6 +135,7 @@ impl<'a> Checker<'a> {
                     }),
                 }
             }
+            // 字段访问：基必须是 struct，再去字段表查类型
             Expr::Field { base, name, span } => {
                 let bt = self.expr_ty(base)?;
                 match &bt {
@@ -140,6 +146,7 @@ impl<'a> Checker<'a> {
                     }),
                 }
             }
+            // 数组字面量：非空；元素类型必须全部相同
             Expr::Array { elems, span } => {
                 if elems.is_empty() {
                     return Err(CheckError {
@@ -159,6 +166,7 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Type::Array(Box::new(first)))
             }
+            // 结构体字面量：字段数齐全，每个字段类型与声明一致
             Expr::StructLit { name, fields, span } => {
                 let decl = self
                     .structs
@@ -207,6 +215,7 @@ impl<'a> Checker<'a> {
         args: &[Expr],
         span: Span,
     ) -> Result<Type, CheckError> {
+        // 先匹配内建函数；都不是再查用户函数表
         match name {
             "print" => {
                 if args.len() != 1 {

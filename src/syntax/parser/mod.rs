@@ -45,6 +45,7 @@ impl Parser {
         Ok(Program { items })
     }
 
+    /// 看当前 Token，不消耗。
     fn peek(&self) -> &Token {
         &self.tokens[self.pos.min(self.tokens.len() - 1)]
     }
@@ -53,10 +54,12 @@ impl Parser {
         &self.peek().kind
     }
 
+    /// 当前 Token 是否为指定种类（只比较判别式，不比较 Ident 内容）。
     fn check(&self, k: &TokenKind) -> bool {
         std::mem::discriminant(self.kind()) == std::mem::discriminant(k)
     }
 
+    /// 消耗并返回当前 Token（已到 Eof 则停住不越界）。
     fn advance(&mut self) -> Token {
         let t = self.tokens[self.pos.min(self.tokens.len() - 1)].clone();
         if self.pos < self.tokens.len() - 1 {
@@ -65,6 +68,7 @@ impl Parser {
         t
     }
 
+    /// 期望某种 Token：是则消耗，否则报错（what 用于中文错误说明）。
     fn expect(&mut self, k: TokenKind, what: &str) -> Result<Token, ParseError> {
         if self.check(&k) {
             Ok(self.advance())

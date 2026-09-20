@@ -12,6 +12,7 @@ pub struct Span {
 }
 
 impl Span {
+    /// 构造源位置（行、列均从 1 开始）。
     pub fn new(line: u32, col: u32) -> Self {
         Self { line, col }
     }

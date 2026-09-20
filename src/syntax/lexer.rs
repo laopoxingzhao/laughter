@@ -51,6 +51,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// 看当前字节，不前进。
     fn peek(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
@@ -59,6 +60,7 @@ impl<'a> Lexer<'a> {
         self.src.get(self.pos + 1).copied()
     }
 
+    /// 读走当前字节并前进；若为换行则行号+1、列归1。
     fn bump(&mut self) -> Option<u8> {
         let c = self.peek()?;
         self.pos += 1;
@@ -291,6 +293,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// 数字字面量：整数或 `1.5` 形式的浮点（小数点后必须跟数字才算浮点）。
+    /// 数字：先吃连续数字，若出现「小数点+后继数字」则再吃小数部分。
     fn number(&mut self, span: Span) -> Result<Token, LexError> {
         let start = self.pos;
         while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
@@ -321,6 +324,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// 字符串字面量：双引号包裹，支持 `\n \t \\ \"`；遇 EOF 未闭合则报错。
+    /// 字符串：吃掉开头引号，直到结束引号；处理 \n 等转义。
     fn string(&mut self, span: Span) -> Result<Token, LexError> {
         self.bump();
         let mut s = String::new();

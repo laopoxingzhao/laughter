@@ -2,6 +2,7 @@
 use super::*;
 
 impl Parser {
+    /// 解析类型：标量关键字 / 结构体名，后面可跟 `[]` 表示数组。
     pub(crate) fn ty(&mut self) -> Result<TypeExpr, ParseError> {
         let t = self.advance();
         let base = match &t.kind {
@@ -33,6 +34,7 @@ impl Parser {
         }
     }
 
+    /// 解析 import：字符串路径 + 可选 `as 别名` + 分号；拒绝 `..`。
     pub(crate) fn import_item(&mut self) -> Result<ImportItem, ParseError> {
         let start = self.expect(TokenKind::Import, "`import`")?.span;
         let t = self.advance();
@@ -100,6 +102,7 @@ impl Parser {
         })
     }
 
+    /// 解析 const：名字 : 类型 = 表达式 ;
     pub(crate) fn const_decl(&mut self) -> Result<ConstDecl, ParseError> {
         let start = self.expect(TokenKind::Const, "`const`")?.span;
         let name = self.expect_ident()?;

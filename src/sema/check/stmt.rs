@@ -5,7 +5,9 @@ impl<'a> Checker<'a> {
     /// 检查一条语句。
     /// 步骤：按语句种类分支 → 求相关表达式类型 → 对照语言规则，不符则报错。
     pub(crate) fn check_stmt(&mut self, s: &Stmt) -> Result<(), CheckError> {
+        // 按语句种类检查；每条路径违反语言规则就返回 Err
         match s {
+            // let：先求初始值类型；[] 需要标注；再写入当前作用域
             Stmt::Let(l) => {
                 let empty = matches!(&l.value, Expr::Array { elems, .. } if elems.is_empty());
                 let vt = if empty {
@@ -41,6 +43,7 @@ impl<'a> Checker<'a> {
                 };
                 self.declare_var(&l.name.name, declared, l.name.span)?;
             }
+            // 赋值：不能改 const；求出目标类型后与右值比较
             Stmt::Assign(a) => {
                 if self.consts.contains_key(&a.name.name) {
                     return Err(CheckError {
@@ -100,6 +103,7 @@ impl<'a> Checker<'a> {
                 self.check_block(&w.body)?;
                 self.loop_depth -= 1;
             }
+            // for：区分「数组」与「范围 a..b」；循环变量进新作用域
             Stmt::For(f) => {
                 if matches!(f.iter, Expr::Range { .. }) {
                     if let Expr::Range { start, end, span } = &f.iter {
@@ -155,6 +159,7 @@ impl<'a> Checker<'a> {
                     });
                 }
             }
+            // return：顶层禁止；类型必须与当前函数返回类型一致
             Stmt::Return(r) => {
                 if self.top_level {
                     return Err(CheckError {

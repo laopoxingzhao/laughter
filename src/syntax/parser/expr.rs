@@ -63,6 +63,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// 相等层 `==` `!=`：循环吃运算符，左结合组装 Binary。
     pub(crate) fn equality(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.cmp()?;
         loop {
@@ -86,6 +87,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// 比较层 `< <= > >=`。
     pub(crate) fn cmp(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.term()?;
         loop {
@@ -113,6 +115,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// 加减层 `+ -`。
     pub(crate) fn term(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.factor()?;
         loop {
@@ -136,6 +139,7 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// 乘除余层 `* / %`。
     pub(crate) fn factor(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.unary()?;
         loop {
@@ -227,6 +231,7 @@ impl Parser {
         Ok(e)
     }
 
+    /// 实参列表：空参或 `e, e, ...`。
     pub(crate) fn arg_list(&mut self) -> Result<Vec<Expr>, ParseError> {
         let mut args = vec![];
         if !self.check(&TokenKind::RParen) {

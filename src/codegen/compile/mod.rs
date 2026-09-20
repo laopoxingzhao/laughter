@@ -121,6 +121,8 @@ impl Compiler {
         program: &Program,
         consts: HashMap<String, Value>,
     ) -> Result<Module, CompileError> {
+        // 步骤1：扫描所有 struct 声明，建立「类型名 → 字段名列表」
+        //         NewStruct / 字段布局会用到这张表
         let mut sidx = HashMap::new();
         let mut stypes = vec![];
         for s in program.structs() {
@@ -131,10 +133,13 @@ impl Compiler {
             });
         }
 
+        // 步骤2：给每个函数编号。方法的键名是 `Type.method`
+        //         voids 记录无返回值的函数（VM 在 Return 时不压返回值）
         let mut fidx = HashMap::new();
         let mut voids = HashSet::new();
         let mut decls: Vec<&FunDecl> = program.functions().collect();
         decls.sort_by_key(|f| f.span.line);
+        // 逐个函数：登记「全名 → 下标」；void 记入集合
         for (i, f) in decls.iter().enumerate() {
             let key = match &f.on_type {
                 Some(t) => format!("{}.{}", t.name, f.name.name),
@@ -145,12 +150,15 @@ impl Compiler {
                 voids.insert(key);
             }
         }
+        // $toplevel 占最后一个下标；print/push 也视为 void 内建
         let tl = decls.len();
         fidx.insert("$toplevel".into(), tl);
         voids.insert("$toplevel".into());
         voids.insert("print".into());
         voids.insert("push".into());
 
+        // 步骤3：为每个函数创建编译上下文 FnC
+        //         参数名按顺序登记为槽 0..arity-1
         let mut fns = vec![];
         for f in &decls {
             let name = match &f.on_type {
@@ -176,6 +184,7 @@ impl Compiler {
             cur: 0,
         };
 
+        // 步骤4：编译每个函数体；末尾补 Return 兜底
         for (i, f) in decls.iter().enumerate() {
             cx.cur = i;
             for st in &f.body.stmts {
@@ -183,12 +192,14 @@ impl Compiler {
             }
             cx.chunk().emit(Op::Return, f.body.span.line);
         }
+        // 步骤5：顶层语句 → $toplevel
         cx.cur = tl;
         for st in program.top_level_stmts() {
             cx.stmt(st)?;
         }
         cx.chunk().emit(Op::Return, 0);
 
+        // 步骤6：FnC 列表 → Function 列表，组装 Module
         let voids = cx.voids.clone();
         let stypes = cx.stypes.clone();
         let mut functions = vec![];
@@ -213,6 +224,7 @@ impl Compiler {
         })
     }
 
+    /// 当前正在编译的函数的字节码缓冲。
     fn chunk(&mut self) -> &mut Chunk {
         &mut self.fns[self.cur].chunk
     }
@@ -221,6 +233,7 @@ impl Compiler {
         &mut self.fns[self.cur]
     }
 
+    /// 判断某调用目标是否不产生返回值（表达式语句因此不必 Pop）。
     fn void_call(&self, n: &str) -> bool {
         self.voids.contains(n)
     }

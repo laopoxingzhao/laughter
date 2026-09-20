@@ -81,6 +81,7 @@ fn err(msg: impl Into<String>) -> BytecodeError {
 /// 2. 写结构体布局表
 /// 3. 对每个函数：名字、arity、void、常量池、指令、行号表
 pub fn encode_module(module: &Module) -> Result<Vec<u8>, BytecodeError> {
+    // 步骤1：文件头
     let mut out = Vec::new();
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
@@ -92,6 +93,7 @@ pub fn encode_module(module: &Module) -> Result<Vec<u8>, BytecodeError> {
     out.extend_from_slice(&(main as u16).to_le_bytes());
     out.extend_from_slice(&(module.toplevel_index as u16).to_le_bytes());
 
+    // 步骤2：结构体布局表
     // struct types
     if module.struct_types.len() > u16::MAX as usize {
         return Err(err("too many struct types"));
@@ -108,6 +110,7 @@ pub fn encode_module(module: &Module) -> Result<Vec<u8>, BytecodeError> {
         }
     }
 
+    // 步骤3：函数表（常量池 + 指令 + 行号）
     // functions
     if module.functions.len() > u16::MAX as usize {
         return Err(err("too many functions"));

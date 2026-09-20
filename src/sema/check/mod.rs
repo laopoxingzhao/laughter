@@ -77,15 +77,19 @@ impl<'a> Checker<'a> {
     /// 3. 检查顶层语句（有 main 时顶层不执行但仍须合法）
     /// 4. 返回折叠后的 const 表
     pub fn check(mut self) -> Result<HashMap<String, Value>, CheckError> {
+        // 步骤1：登记结构体（供字段/类型标注解析）
         for s in self.program.structs() {
             self.declare_struct(s)?;
         }
+        // 步骤2：登记函数与方法签名
         for f in self.program.functions() {
             self.declare_fun(f)?;
         }
+        // 步骤3：登记并折叠 const（此时已知结构体/函数名，可查重）
         for c in self.program.consts() {
             self.declare_const(c)?;
         }
+        // 步骤4：逐个检查函数体
         for f in self.program.functions() {
             self.check_fun(f)?;
         }
@@ -93,9 +97,11 @@ impl<'a> Checker<'a> {
         self.ret = Type::Void;
         self.loop_depth = 0;
         self.scopes = vec![HashMap::new()];
+        // 步骤5：检查顶层语句（有 main 时运行期不执行，但仍须类型合法）
         for st in self.program.top_level_stmts() {
             self.check_stmt(st)?;
         }
+        // 步骤6：返回「名字 → 折叠后的值」，供 codegen 发 Const
         Ok(self.consts.into_iter().map(|(k, (_, v))| (k, v)).collect())
     }
 
@@ -103,6 +109,7 @@ impl<'a> Checker<'a> {
         Type::from_ast(t, &self.structs).map_err(|m| CheckError { message: m, span })
     }
 
+    /// 登记结构体：查重 → 逐字段解析类型 → 查重字段名 → 写入 structs 表。
     fn declare_struct(&mut self, s: &StructDecl) -> Result<(), CheckError> {
         if self.structs.contains_key(&s.name.name) {
             return Err(CheckError {
@@ -126,6 +133,7 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    /// 登记 const：查重 → 解析标注类型 → 折叠右侧表达式 → 核对类型一致。
     fn declare_const(&mut self, c: &ConstDecl) -> Result<(), CheckError> {
         if BUILTINS.contains(&c.name.name.as_str())
             || self.structs.contains_key(&c.name.name)
@@ -167,6 +175,7 @@ impl<'a> Checker<'a> {
     /// 4. `20 + 1` → Int(21)
     ///
     /// 一旦遇到「编译期算不出来」的东西（如调用函数），就报错。
+    /// 登记函数/方法：解析参数与返回类型；方法校验接收者类型。
     fn declare_fun(&mut self, f: &FunDecl) -> Result<(), CheckError> {
         if f.on_type.is_none() && BUILTINS.contains(&f.name.name.as_str()) {
             return Err(CheckError {
@@ -237,6 +246,7 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    /// 检查函数体：新作用域 + 参数槽 → 检查语句 → 非 void 须所有路径 return。
     fn check_fun(&mut self, f: &FunDecl) -> Result<(), CheckError> {
         let (_, ret) = {
             let mut params = vec![];
@@ -281,6 +291,7 @@ impl<'a> Checker<'a> {
         r
     }
 
+    /// 从内向外查变量类型（作用域栈顶优先）。
     fn lookup(&self, n: &str) -> Option<Type> {
         self.scopes.iter().rev().find_map(|s| s.get(n).cloned())
     }

@@ -21,6 +21,7 @@ impl Parser {
     /// 顺序很重要：先认 `let/if/while/...` 这些「以关键字开头」的语句；
     /// 再看是不是赋值（`x = ...`、`a[i] = ...`、`p.f = ...`）；
     /// 剩下的当作表达式语句（例如 `print(1);`），结尾必须有 `;`。
+    /// 语句分派：关键字开头的专用语句优先，否则尝试赋值/表达式语句。
     pub(crate) fn stmt(&mut self) -> Result<Stmt, ParseError> {
         if self.check(&TokenKind::Let) {
             return Ok(Stmt::Let(self.let_stmt()?));

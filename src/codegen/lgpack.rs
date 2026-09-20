@@ -117,13 +117,16 @@ pub fn pack_program(
     resources: &[std::path::PathBuf],
     entry_name: &str,
 ) -> Result<(), PackError> {
+    // 步骤1：编译入口 .lg（import 已由 loader 合并）
     let module =
         compile_file(&main_lg.display().to_string()).map_err(|e| err(format!("编译失败: {e}")))?;
+    // 步骤2：编码为 .lgb 字节
     let lgb = encode_module(&module).map_err(|e| err(e.message))?;
     let manifest = build_manifest(entry_name);
 
+    // 步骤3：创建 ZIP，写入清单与 app.lgb
     let file = std::fs::File::create(output)
-        .map_err(|e| err(format!("cannot create {}: {e}", output.display())))?;
+        .map_err(|e| err(format!("无法创建 {}: {e}", output.display())))?;
     let mut zip = ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -187,6 +190,7 @@ pub fn read_package(path: &Path) -> Result<(PackMeta, Vec<u8>), PackError> {
 /// 执行 `.lgpack`。
 /// 执行 .lgpack：读包 → 校验包版本 → 解码字节码 → VM 执行
 pub fn exec_package(path: &Path) -> Result<Vec<String>, String> {
+    // 步骤：读包 → 校验版本 → 解码 → 执行
     let (meta, bytes) = read_package(path).map_err(|e| e.to_string())?;
     if meta.package_version != PACKAGE_VERSION {
         return Err(format!(

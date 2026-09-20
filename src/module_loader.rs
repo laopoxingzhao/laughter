@@ -26,6 +26,7 @@ use crate::syntax::lexer::Lexer;
 use crate::syntax::parser::Parser;
 
 /// 单文件：词法 + 语法 → AST（错误带 `file:line:col`）。
+/// 文件路径 + 源码文本 → AST。
 fn parse_src(file: &str, src: &str) -> Result<Program, String> {
     let toks = Lexer::new(src)
         .tokenize()
@@ -35,6 +36,7 @@ fn parse_src(file: &str, src: &str) -> Result<Program, String> {
         .map_err(|e| format!("{file}:{}:{}: 错误: {}", e.span.line, e.span.col, e.message))
 }
 
+/// 把 import 相对路径拼到「当前文件所在目录」；禁止 `..`。
 fn resolve(base_file: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.split('/').any(|s| s == "..") {
         return Err(format!("import 路径不能包含 `..`: {rel}"));

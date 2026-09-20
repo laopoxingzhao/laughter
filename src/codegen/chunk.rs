@@ -41,12 +41,14 @@ impl Chunk {
         self.lines.push(line);
     }
 
+    /// 写入 2 字节小端操作数；行号表补两格与字节对齐。
     pub fn emit_u16(&mut self, n: u16, line: u32) {
         self.code.extend_from_slice(&n.to_le_bytes());
         self.lines.push(line);
         self.lines.push(line);
     }
 
+    /// 常量入池：若已存在相同值则复用下标，否则追加。
     pub fn add_const(&mut self, v: Value) -> Result<u16, String> {
         if let Some(i) = self.constants.iter().position(|c| const_eq(c, &v)) {
             return Ok(i as u16);
