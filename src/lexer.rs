@@ -299,7 +299,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn string(&mut self, span: Span) -> Result<Token, LexError> {
-        self.bump(); // opening quote
+        self.bump(); // 消费开头的引号"
         let mut out = String::new();
         loop {
             match self.bump() {

@@ -9,11 +9,11 @@ use laughter::vm::{compile_source_file, run_source_file};
 
 fn usage() -> ! {
     eprintln!(
-        "Laughter — teaching language compiler + VM\n\n\
-         USAGE:\n\
-         \x20 laughter run <file.lg>      Compile and execute\n\
-         \x20 laughter check <file.lg>    Typecheck only\n\
-         \x20 laughter disasm <file.lg>   Print bytecode\n"
+        "Laughter — 教学语言编译器 + VM\n\n\
+         用法:\n\
+         \x20 laughter run <file.lg>      类型检查 + 编译 + 执行\n\
+         \x20 laughter check <file.lg>    词法/语法/语义 + 编译，不执行\n\
+         \x20 laughter disasm <file.lg>   打印字节码反汇编与常量表\n"
     );
     std::process::exit(2)
 }
@@ -27,14 +27,14 @@ fn main() -> ExitCode {
     let path = args.get(1);
 
     let Some(path) = path else {
-        eprintln!("error: missing file argument");
+        eprintln!("error: 缺少文件参数");
         usage();
     };
 
     let src = match fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("error: cannot read `{path}`: {e}");
+            eprintln!("error: 无法读取 `{path}`: {e}");
             return ExitCode::from(1);
         }
     };
@@ -91,7 +91,7 @@ fn main() -> ExitCode {
         },
         "help" | "--help" | "-h" => usage(),
         other => {
-            eprintln!("error: unknown command `{other}`");
+            eprintln!("error: 未知命令 `{other}`");
             usage();
         }
     }

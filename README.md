@@ -20,7 +20,7 @@ cargo test
 
 ```bash
 laughter run <file.lg>      # 类型检查 + 编译 + 执行
-laughter check <file.lg>    # 只做词法/语法/语义检查
+laughter check <file.lg>    # 词法/语法/语义 + 编译到字节码，不执行
 laughter disasm <file.lg>   # 打印字节码反汇编与常量表
 ```
 
@@ -88,6 +88,6 @@ fun main() -> void {
 | `src/value.rs` / `vm.rs` | 运行时值、栈式 VM、`run_source` |
 | `src/lib.rs` / `src/bin/laughter.rs` | 库入口与 CLI |
 
-## Out of Scope（本期不做）
+## 本期不做
 
 结构体/闭包/模块 import、隐式数值转换、完整字符串 API、GC、LLVM/原生可执行文件、REPL、语言服务器。
