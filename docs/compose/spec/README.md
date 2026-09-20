@@ -1,7 +1,7 @@
 # Compose 设计文档索引
 
 本目录是 **Compose Next 工作流**留下的功能设计/交付记录，按时间从旧到新。  
-**现行语言语义以 [`../LANGUAGE.md`](../LANGUAGE.md) 为准**；若与历史 spec 冲突，以 LANGUAGE.md 与当前代码为准。
+**现行语言语义以 [`../../LANGUAGE.md`](../../LANGUAGE.md) 为准**；若与历史 spec 冲突，以 LANGUAGE.md 与当前代码为准。
 
 | 文档 | 主题 | 状态 |
 |------|------|------|

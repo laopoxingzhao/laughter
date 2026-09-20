@@ -31,7 +31,7 @@ cargo run -- disasm examples/zca.lg
 
 ## 第一个程序
 
-`hello.lg`：
+新建 `hello_main.lg`（或打开 `examples/hello.lg`，后者是**顶层** `print`，无 `main`）：
 
 ```text
 fun main() -> void {
@@ -40,10 +40,14 @@ fun main() -> void {
 ```
 
 ```bash
-cargo run -- run hello.lg
+cargo run -- run hello_main.lg
+# 或
+cargo run -- run examples/hello.lg
 ```
 
 有 `fun main() -> void` 时从 `main` 进入；没有则执行文件顶层语句。
+
+**模块注意**：CLI / `module_loader::run_file` 可处理 `import`；库函数 `run_source` / `compile_source` 只接受无 import 的单文件源码（含 import 会报错，请改用文件路径）。
 
 ## 示例一览
 

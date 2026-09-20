@@ -11,7 +11,7 @@
 | 源文件后缀 | `.lg` |
 | 仓库 | https://github.com/laopoxingzhao/laughter |
 | 许可证 | [MIT](LICENSE) |
-| CI | GitHub Actions：fmt + test |
+| CI | GitHub Actions：`cargo fmt --check` + `cargo test` + `cargo build --release` |
 
 ## 试用
 

@@ -28,11 +28,12 @@ item    := struct_decl | const_decl | import | fun_decl | stmt
 ```
 
 - **入口**：若存在 `fun main() -> void`，`run` 从 `main` 进入（先完成模块声明合并）；否则执行顶层语句。
-- **import**（仅顶层）：
+- **import**（仅顶层；通过文件路径运行，如 `laughter run main.lg`）：
   - `import "rel/path.lg";` — 将目标文件中顶层 `struct`/`const`/`fun` **扁平合入**（不执行目标顶层语句）。
   - `import "rel/path.lg" as ns;` — 合入并把符号命名为 `ns.name`（结构体类型名亦为 `ns.Name`）。
   - 路径相对当前文件；**禁止** `..`；环状 import 报错。
   - 同名冲突报错。
+  - 库 API `run_source`/`compile_source` **不支持** import（单文件字符串）。
 - 顶层语句在 `main` 存在时**不执行**（仅声明合并进模块）；无 `main` 时执行顶层语句。
 
 ## 3. 声明
