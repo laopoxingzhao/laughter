@@ -13,12 +13,16 @@ use crate::parser::Parser;
 use crate::resolve::Checker;
 
 pub fn parse_source(src: &str) -> Result<Program, String> {
+    parse_source_as("<input>", src)
+}
+
+fn parse_source_as(file: &str, src: &str) -> Result<Program, String> {
     let tokens = Lexer::new(src)
         .tokenize()
-        .map_err(|e| format!("{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
     Parser::new(tokens)
         .parse_program()
-        .map_err(|e| format!("{}:{}: error: {}", e.span.line, e.span.col, e.message))
+        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))
 }
 
 fn resolve_import(from_file: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -45,7 +49,7 @@ fn load_program(
     }
     let src = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
-    let program = parse_source(&src).map_err(|e| format!("{}: {e}", path.display()))?;
+    let program = parse_source_as(&path.display().to_string(), &src)?;
 
     stack.push(canon);
     let mut pending_imports: Vec<(ImportItem, PathBuf)> = Vec::new();
@@ -136,20 +140,23 @@ pub fn compile_path(path: &Path) -> Result<Module, String> {
     let mut ns_aliases = HashMap::new();
     load_program(path, &mut stack, &mut items, &mut ns_aliases)?;
     let program = Program { items };
+    let label = path.display().to_string();
     Checker::new(&program)
         .check()
-        .map_err(|e| format!("{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    Compiler::compile(&program).map_err(|e| format!("{}:{}: error: {}", e.line, e.col, e.message))
+        .map_err(|e| format!("{label}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    Compiler::compile(&program)
+        .map_err(|e| format!("{label}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 
 pub fn run_path(path: &Path) -> Result<Vec<String>, String> {
     let module = compile_path(path)?;
     let mut vm = crate::vm::Vm::new(&module);
+    let label = path.display().to_string();
     vm.run().map_err(|e| {
         if e.line == 0 {
-            format!("runtime error: {}", e.message)
+            format!("{label}: runtime error: {}", e.message)
         } else {
-            format!("runtime error at line {}: {}", e.line, e.message)
+            format!("{label}:{}: runtime error: {}", e.line, e.message)
         }
     })
 }
