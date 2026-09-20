@@ -1,0 +1,14 @@
+fun main() -> void {
+    let a: int[] = [1, 2, 3];
+    print(a[0]);
+    print(len(a));
+    a[1] = 20;
+    print(a);
+    let total = 0;
+    let i = 0;
+    while i < len(a) {
+        total = total + a[i];
+        i = i + 1;
+    }
+    print(total);
+}

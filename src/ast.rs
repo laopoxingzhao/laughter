@@ -1,0 +1,225 @@
+use crate::token::Span;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeExpr {
+    Int,
+    Float,
+    Bool,
+    String,
+    Void,
+    Array(Box<TypeExpr>),
+}
+
+impl TypeExpr {
+    pub fn is_void(&self) -> bool {
+        matches!(self, TypeExpr::Void)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnOp {
+    Neg,
+    Not,
+}
+
+#[derive(Debug, Clone)]
+pub struct Ident {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    Int {
+        value: i64,
+        span: Span,
+    },
+    Float {
+        value: f64,
+        span: Span,
+    },
+    Bool {
+        value: bool,
+        span: Span,
+    },
+    Str {
+        value: String,
+        span: Span,
+    },
+    Var {
+        name: Ident,
+    },
+    Unary {
+        op: UnOp,
+        expr: Box<Expr>,
+        span: Span,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: Span,
+    },
+    Call {
+        callee: Ident,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+        span: Span,
+    },
+    Array {
+        elems: Vec<Expr>,
+        span: Span,
+    },
+}
+
+impl Expr {
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::Int { span, .. }
+            | Expr::Float { span, .. }
+            | Expr::Bool { span, .. }
+            | Expr::Str { span, .. }
+            | Expr::Unary { span, .. }
+            | Expr::Binary { span, .. }
+            | Expr::Call { span, .. }
+            | Expr::Index { span, .. }
+            | Expr::Array { span, .. } => *span,
+            Expr::Var { name } => name.span,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LetStmt {
+    pub name: Ident,
+    pub ty: Option<TypeExpr>,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignStmt {
+    /// `name = value` or `name[index] = value`
+    pub name: Ident,
+    pub index: Option<Expr>,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStmt {
+    pub cond: Expr,
+    pub then_block: Block,
+    /// `else` or `else if` — if `else_branch` is `If`, it was `else if`
+    pub else_branch: Option<ElseBranch>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum ElseBranch {
+    Block(Block),
+    If(Box<IfStmt>),
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub cond: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnStmt {
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprStmt {
+    pub expr: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Stmt {
+    Let(LetStmt),
+    Assign(AssignStmt),
+    If(IfStmt),
+    While(WhileStmt),
+    Return(ReturnStmt),
+    Expr(ExprStmt),
+    Block(Block),
+}
+
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: Ident,
+    pub ty: TypeExpr,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunDecl {
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub ret: TypeExpr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Item {
+    Fun(FunDecl),
+    Stmt(Stmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub items: Vec<Item>,
+}
+
+impl Program {
+    pub fn functions(&self) -> impl Iterator<Item = &FunDecl> {
+        self.items.iter().filter_map(|it| match it {
+            Item::Fun(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    pub fn top_level_stmts(&self) -> impl Iterator<Item = &Stmt> {
+        self.items.iter().filter_map(|it| match it {
+            Item::Stmt(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    pub fn has_main(&self) -> bool {
+        self.functions().any(|f| f.name.name == "main")
+    }
+}

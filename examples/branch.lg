@@ -1,0 +1,15 @@
+let n = 10;
+let acc = 0;
+while n > 0 {
+    acc = acc + n;
+    n = n - 1;
+}
+print(acc);
+
+if acc == 55 {
+    print("fifty-five");
+} else if acc > 55 {
+    print("big");
+} else {
+    print("small");
+}
