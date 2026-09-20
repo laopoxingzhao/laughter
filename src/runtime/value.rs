@@ -1,8 +1,4 @@
-//! 运行时值：VM 栈上的数据。
-//!
-//! 结构体为**值语义**：`Value::Struct(StructVal)` 直接内嵌，赋值/传参按字段拷贝。
-//! 若字段是 `string` / 数组，则该字段仍是指针语义（浅拷贝共享句柄）。
-//! 数组本身仍是 `Rc<RefCell<Vec<Value>>>` 句柄（引用语义）。
+//! 运行时值。结构体为值语义；数组/字符串为句柄。
 
 use std::cell::RefCell;
 use std::fmt;
@@ -17,13 +13,12 @@ pub struct StructVal {
 }
 
 impl StructVal {
-    pub fn get(&self, field: &str) -> Option<&Value> {
-        self.fields.iter().find(|(n, _)| n == field).map(|(_, v)| v)
+    pub fn get(&self, f: &str) -> Option<&Value> {
+        self.fields.iter().find(|(n, _)| n == f).map(|(_, v)| v)
     }
-
-    pub fn set(&mut self, field: &str, v: Value) -> bool {
-        if let Some(slot) = self.fields.iter_mut().find(|(n, _)| n == field) {
-            slot.1 = v;
+    pub fn set(&mut self, f: &str, v: Value) -> bool {
+        if let Some(s) = self.fields.iter_mut().find(|(n, _)| n == f) {
+            s.1 = v;
             true
         } else {
             false
@@ -38,7 +33,6 @@ pub enum Value {
     Bool(bool),
     Str(Rc<str>),
     Array(ArrayHandle),
-    /// 值语义结构体（非句柄）
     Struct(StructVal),
 }
 

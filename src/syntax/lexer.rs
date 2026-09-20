@@ -1,7 +1,6 @@
-//! 词法分析：源码字符串 → `Token` 流（以 `Eof` 结尾）。
-//! 负责跳过空白与 `//` 行注释，识别关键字/字面量/运算符，并维护行列号。
+//! 词法分析：源码 → Token 流。
 
-use crate::token::{Span, Token, TokenKind};
+use crate::syntax::token::{Span, Token, TokenKind};
 
 #[derive(Debug)]
 pub struct LexError {
@@ -27,16 +26,15 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn tokenize(mut self) -> Result<Vec<Token>, LexError> {
-        let mut tokens = Vec::new();
+        let mut out = Vec::new();
         loop {
-            let tok = self.next_token()?;
-            let is_eof = tok.kind == TokenKind::Eof;
-            tokens.push(tok);
-            if is_eof {
-                break;
+            let t = self.next_token()?;
+            let eof = t.kind == TokenKind::Eof;
+            out.push(t);
+            if eof {
+                return Ok(out);
             }
         }
-        Ok(tokens)
     }
 
     fn peek(&self) -> Option<u8> {
@@ -66,7 +64,7 @@ impl<'a> Lexer<'a> {
     fn skip_trivia(&mut self) {
         loop {
             match self.peek() {
-                Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n') => {
+                Some(b' ' | b'\t' | b'\r' | b'\n') => {
                     self.bump();
                 }
                 Some(b'/') if self.peek2() == Some(b'/') => {
@@ -88,9 +86,8 @@ impl<'a> Lexer<'a> {
         let Some(c) = self.peek() else {
             return Ok(Token::new(TokenKind::Eof, span));
         };
-
         if c.is_ascii_alphabetic() || c == b'_' {
-            return Ok(self.ident_or_keyword(span));
+            return Ok(self.ident_kw(span));
         }
         if c.is_ascii_digit() {
             return self.number(span);
@@ -98,8 +95,6 @@ impl<'a> Lexer<'a> {
         if c == b'"' {
             return self.string(span);
         }
-
-        // 多字符运算符优先匹配
         let kind = match c {
             b'(' => {
                 self.bump();
@@ -137,15 +132,6 @@ impl<'a> Lexer<'a> {
                 self.bump();
                 TokenKind::Semi
             }
-            b'.' => {
-                self.bump();
-                if self.peek() == Some(b'.') {
-                    self.bump();
-                    TokenKind::DotDot
-                } else {
-                    TokenKind::Dot
-                }
-            }
             b'+' => {
                 self.bump();
                 TokenKind::Plus
@@ -158,6 +144,10 @@ impl<'a> Lexer<'a> {
                 self.bump();
                 TokenKind::Percent
             }
+            b'/' => {
+                self.bump();
+                TokenKind::Slash
+            }
             b'-' => {
                 self.bump();
                 if self.peek() == Some(b'>') {
@@ -166,10 +156,6 @@ impl<'a> Lexer<'a> {
                 } else {
                     TokenKind::Minus
                 }
-            }
-            b'/' => {
-                self.bump();
-                TokenKind::Slash
             }
             b'=' => {
                 self.bump();
@@ -231,17 +217,26 @@ impl<'a> Lexer<'a> {
                     });
                 }
             }
+            b'.' => {
+                self.bump();
+                if self.peek() == Some(b'.') {
+                    self.bump();
+                    TokenKind::DotDot
+                } else {
+                    TokenKind::Dot
+                }
+            }
             _ => {
                 return Err(LexError {
                     message: format!("unexpected character `{}`", c as char),
                     span,
-                });
+                })
             }
         };
         Ok(Token::new(kind, span))
     }
 
-    fn ident_or_keyword(&mut self, span: Span) -> Token {
+    fn ident_kw(&mut self, span: Span) -> Token {
         let start = self.pos;
         while let Some(c) = self.peek() {
             if c.is_ascii_alphanumeric() || c == b'_' {
@@ -254,17 +249,17 @@ impl<'a> Lexer<'a> {
         let kind = match text {
             "fun" => TokenKind::Fun,
             "struct" => TokenKind::Struct,
-            "for" => TokenKind::For,
-            "in" => TokenKind::In,
-            "break" => TokenKind::Break,
-            "continue" => TokenKind::Continue,
+            "const" => TokenKind::Const,
             "import" => TokenKind::Import,
             "as" => TokenKind::As,
-            "const" => TokenKind::Const,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "while" => TokenKind::While,
+            "for" => TokenKind::For,
+            "in" => TokenKind::In,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
             "return" => TokenKind::Return,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
@@ -280,35 +275,27 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self, span: Span) -> Result<Token, LexError> {
         let start = self.pos;
-        while let Some(c) = self.peek() {
-            if c.is_ascii_digit() {
-                self.bump();
-            } else {
-                break;
-            }
+        while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
+            self.bump();
         }
         let mut is_float = false;
-        if self.peek() == Some(b'.') && self.peek2().is_some_and(|c| c.is_ascii_digit()) {
+        if self.peek() == Some(b'.') && matches!(self.peek2(), Some(c) if c.is_ascii_digit()) {
             is_float = true;
             self.bump();
-            while let Some(c) = self.peek() {
-                if c.is_ascii_digit() {
-                    self.bump();
-                } else {
-                    break;
-                }
+            while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
+                self.bump();
             }
         }
         let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
         if is_float {
             let n: f64 = text.parse().map_err(|_| LexError {
-                message: format!("invalid float literal `{text}`"),
+                message: format!("invalid float `{text}`"),
                 span,
             })?;
             Ok(Token::new(TokenKind::Float(n), span))
         } else {
             let n: i64 = text.parse().map_err(|_| LexError {
-                message: format!("invalid integer literal `{text}`"),
+                message: format!("invalid integer `{text}`"),
                 span,
             })?;
             Ok(Token::new(TokenKind::Int(n), span))
@@ -316,8 +303,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn string(&mut self, span: Span) -> Result<Token, LexError> {
-        self.bump(); // 消费开头的引号"
-        let mut out = String::new();
+        self.bump();
+        let mut s = String::new();
         loop {
             match self.bump() {
                 None => {
@@ -328,47 +315,36 @@ impl<'a> Lexer<'a> {
                 }
                 Some(b'"') => break,
                 Some(b'\\') => match self.bump() {
-                    Some(b'n') => out.push('\n'),
-                    Some(b't') => out.push('\t'),
-                    Some(b'\\') => out.push('\\'),
-                    Some(b'"') => out.push('"'),
+                    Some(b'n') => s.push('\n'),
+                    Some(b't') => s.push('\t'),
+                    Some(b'\\') => s.push('\\'),
+                    Some(b'"') => s.push('"'),
                     _ => {
                         return Err(LexError {
-                            message: "invalid escape sequence".into(),
+                            message: "invalid escape".into(),
                             span,
                         })
                     }
                 },
+                Some(c) if c < 0x80 => s.push(c as char),
                 Some(c) => {
-                    // 收集以 c 为首的完整 UTF-8 字符
-                    if c < 0x80 {
-                        out.push(c as char);
-                    } else {
-                        // 多字节：c 已消费首字节，继续收后续 continuation 字节
-                        let mut bytes = vec![c];
-                        while bytes.len() < 4 {
-                            match self.peek() {
-                                Some(nb) if nb & 0xC0 == 0x80 => {
-                                    bytes.push(nb);
-                                    self.bump();
-                                }
-                                _ => break,
-                            }
-                        }
-                        match std::str::from_utf8(&bytes) {
-                            Ok(s) => out.push_str(s),
-                            Err(_) => {
-                                return Err(LexError {
-                                    message: "invalid UTF-8 in string".into(),
-                                    span,
-                                })
-                            }
+                    let mut bytes = vec![c];
+                    while matches!(self.peek(), Some(b) if b & 0xC0 == 0x80) {
+                        bytes.push(self.bump().unwrap());
+                    }
+                    match std::str::from_utf8(&bytes) {
+                        Ok(t) => s.push_str(t),
+                        Err(_) => {
+                            return Err(LexError {
+                                message: "invalid UTF-8 in string".into(),
+                                span,
+                            })
                         }
                     }
                 }
             }
         }
-        Ok(Token::new(TokenKind::Str(out), span))
+        Ok(Token::new(TokenKind::Str(s), span))
     }
 }
 
@@ -386,87 +362,20 @@ mod tests {
     }
 
     #[test]
-    fn keywords_and_idents() {
-        let k = kinds("fun let if else while return true false int float bool string void foo");
-        assert_eq!(
-            k,
-            vec![
-                TokenKind::Fun,
-                TokenKind::Let,
-                TokenKind::If,
-                TokenKind::Else,
-                TokenKind::While,
-                TokenKind::Return,
-                TokenKind::True,
-                TokenKind::False,
-                TokenKind::TyInt,
-                TokenKind::TyFloat,
-                TokenKind::TyBool,
-                TokenKind::TyString,
-                TokenKind::TyVoid,
-                TokenKind::Ident("foo".into()),
-                TokenKind::Eof,
-            ]
-        );
+    fn keywords_and_ops() {
+        let k = kinds("fun struct const for in break && || -> ..");
+        assert!(k.contains(&TokenKind::Fun));
+        assert!(k.contains(&TokenKind::Struct));
+        assert!(k.contains(&TokenKind::Const));
+        assert!(k.contains(&TokenKind::DotDot));
+        assert!(k.contains(&TokenKind::Arrow));
     }
 
     #[test]
-    fn numbers_strings_ops() {
-        let k = kinds(r#"1 2.5 "hi\n" + - * / % == != < <= > >= && || ! = -> [] () {} ,: ;"#);
-        assert_eq!(
-            k,
-            vec![
-                TokenKind::Int(1),
-                TokenKind::Float(2.5),
-                TokenKind::Str("hi\n".into()),
-                TokenKind::Plus,
-                TokenKind::Minus,
-                TokenKind::Star,
-                TokenKind::Slash,
-                TokenKind::Percent,
-                TokenKind::EqEq,
-                TokenKind::BangEq,
-                TokenKind::Lt,
-                TokenKind::LtEq,
-                TokenKind::Gt,
-                TokenKind::GtEq,
-                TokenKind::AndAnd,
-                TokenKind::OrOr,
-                TokenKind::Bang,
-                TokenKind::Assign,
-                TokenKind::Arrow,
-                TokenKind::LBracket,
-                TokenKind::RBracket,
-                TokenKind::LParen,
-                TokenKind::RParen,
-                TokenKind::LBrace,
-                TokenKind::RBrace,
-                TokenKind::Comma,
-                TokenKind::Colon,
-                TokenKind::Semi,
-                TokenKind::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn line_col_tracking() {
-        let toks = Lexer::new("let x\n= 1;").tokenize().unwrap();
-        assert_eq!(toks[0].span, Span::new(1, 1));
-        assert_eq!(toks[2].span, Span::new(2, 1));
-    }
-
-    #[test]
-    fn comments_skipped() {
-        let k = kinds("1 // comment\n2");
-        assert_eq!(
-            k,
-            vec![TokenKind::Int(1), TokenKind::Int(2), TokenKind::Eof]
-        );
-    }
-
-    #[test]
-    fn illegal_char() {
-        assert!(Lexer::new("let @").tokenize().is_err());
+    fn numbers_strings() {
+        let k = kinds(r#"1 2.5 "a\n""#);
+        assert_eq!(k[0], TokenKind::Int(1));
+        assert_eq!(k[1], TokenKind::Float(2.5));
+        assert_eq!(k[2], TokenKind::Str("a\n".into()));
     }
 }

@@ -1,11 +1,9 @@
 //! CLI：`laughter run|check|disasm <file.lg>`
-//! 诊断格式：编译期 `file:line:col: error:`，运行时 `file:line: runtime error:`。
-//! `run` 通过 loader 解析 `import`（相对当前文件）。
 
 use std::env;
 use std::process::ExitCode;
 
-use laughter::loader::{compile_file, run_file};
+use laughter::module_loader::{compile_file, run_file};
 
 fn usage() -> ! {
     eprintln!(
@@ -13,7 +11,8 @@ fn usage() -> ! {
          用法:\n\
          \x20 laughter run <file.lg>      类型检查 + 编译 + 执行\n\
          \x20 laughter check <file.lg>    词法/语法/语义 + 编译，不执行\n\
-         \x20 laughter disasm <file.lg>   打印字节码反汇编与常量表\n"
+         \x20 laughter disasm <file.lg>   打印字节码反汇编与常量表\n\
+         \n语言契约: docs/LANGUAGE.md\n"
     );
     std::process::exit(2)
 }
@@ -24,9 +23,7 @@ fn main() -> ExitCode {
         usage();
     }
     let cmd = args[0].as_str();
-    let path = args.get(1);
-
-    let Some(path) = path else {
+    let Some(path) = args.get(1) else {
         eprintln!("error: 缺少文件参数");
         usage();
     };
@@ -34,8 +31,8 @@ fn main() -> ExitCode {
     match cmd {
         "run" => match run_file(path) {
             Ok(lines) => {
-                for line in lines {
-                    println!("{line}");
+                for l in lines {
+                    println!("{l}");
                 }
                 ExitCode::SUCCESS
             }
@@ -55,8 +52,8 @@ fn main() -> ExitCode {
             }
         },
         "disasm" => match compile_file(path) {
-            Ok(module) => {
-                for f in &module.functions {
+            Ok(m) => {
+                for f in &m.functions {
                     let label = if f.name == "$toplevel" {
                         "<toplevel>".to_string()
                     } else {
@@ -66,12 +63,6 @@ fn main() -> ExitCode {
                         )
                     };
                     print!("{}", f.chunk.disassemble(&label));
-                    if !f.chunk.constants.is_empty() {
-                        println!("constants:");
-                        for (i, c) in f.chunk.constants.iter().enumerate() {
-                            println!("  [{i}] {}", c.display());
-                        }
-                    }
                     println!();
                 }
                 ExitCode::SUCCESS
@@ -81,7 +72,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "help" | "--help" | "-h" => usage(),
+        "help" | "-h" | "--help" => usage(),
         other => {
             eprintln!("error: 未知命令 `{other}`");
             usage();

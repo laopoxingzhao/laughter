@@ -1,7 +1,6 @@
-//! 抽象语法树（AST）：解析器的输出，语义检查与字节码编译的输入。
-//! 节点尽量带 `Span`，错误信息才能指回源码位置。
+//! 抽象语法树。
 
-use crate::token::Span;
+use crate::syntax::token::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeExpr {
@@ -11,7 +10,6 @@ pub enum TypeExpr {
     String,
     Void,
     Array(Box<TypeExpr>),
-    /// 用户结构体类型名
     Named(String),
 }
 
@@ -51,7 +49,7 @@ pub struct Ident {
 }
 
 #[derive(Debug, Clone)]
-pub struct StructFieldDecl {
+pub struct FieldDecl {
     pub name: Ident,
     pub ty: TypeExpr,
 }
@@ -59,7 +57,39 @@ pub struct StructFieldDecl {
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     pub name: Ident,
-    pub fields: Vec<StructFieldDecl>,
+    pub fields: Vec<FieldDecl>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstDecl {
+    pub name: Ident,
+    pub ty: TypeExpr,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportItem {
+    pub path: String,
+    pub alias: Option<Ident>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: Ident,
+    pub ty: TypeExpr,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunDecl {
+    pub name: Ident,
+    /// `fun Point.sum(self: Point)` → Some("Point")
+    pub on_type: Option<Ident>,
+    pub params: Vec<Param>,
+    pub ret: TypeExpr,
+    pub body: Block,
     pub span: Span,
 }
 
@@ -100,13 +130,15 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
+    MethodCall {
+        recv: Box<Expr>,
+        method: Ident,
+        args: Vec<Expr>,
+        span: Span,
+    },
     Index {
         base: Box<Expr>,
         index: Box<Expr>,
-        span: Span,
-    },
-    Array {
-        elems: Vec<Expr>,
         span: Span,
     },
     Field {
@@ -114,22 +146,18 @@ pub enum Expr {
         name: Ident,
         span: Span,
     },
+    Array {
+        elems: Vec<Expr>,
+        span: Span,
+    },
     StructLit {
         name: Ident,
         fields: Vec<(Ident, Expr)>,
         span: Span,
     },
-    /// 仅用于 `for i in a..b` 的半开区间
     Range {
         start: Box<Expr>,
         end: Box<Expr>,
-        span: Span,
-    },
-    /// `recv.method(args)`；recv 为命名空间 `ns` 时是模块函数调用
-    MethodCall {
-        recv: Box<Expr>,
-        method: Ident,
-        args: Vec<Expr>,
         span: Span,
     },
 }
@@ -144,12 +172,12 @@ impl Expr {
             | Expr::Unary { span, .. }
             | Expr::Binary { span, .. }
             | Expr::Call { span, .. }
+            | Expr::MethodCall { span, .. }
             | Expr::Index { span, .. }
-            | Expr::Array { span, .. }
             | Expr::Field { span, .. }
+            | Expr::Array { span, .. }
             | Expr::StructLit { span, .. }
-            | Expr::Range { span, .. }
-            | Expr::MethodCall { span, .. } => *span,
+            | Expr::Range { span, .. } => *span,
             Expr::Var { name } => name.span,
         }
     }
@@ -163,12 +191,11 @@ pub struct LetStmt {
     pub span: Span,
 }
 
-/// `name = value` 或 `name[index] = value` 或 `name.field = value`
+/// `name`、`name[i]`、`name.f(.g)*` 赋值
 #[derive(Debug, Clone)]
 pub struct AssignStmt {
     pub name: Ident,
     pub index: Option<Expr>,
-    /// 字段路径（按访问顺序）：`p.x` → ["x"]，`p.a.b` → ["a","b"]
     pub fields: Vec<Ident>,
     pub value: Expr,
     pub span: Span,
@@ -178,7 +205,6 @@ pub struct AssignStmt {
 pub struct IfStmt {
     pub cond: Expr,
     pub then_block: Block,
-    /// `else` 或 `else if`：`else_branch` 为 `If` 时表示 `else if`
     pub else_branch: Option<ElseBranch>,
     pub span: Span,
 }
@@ -237,42 +263,10 @@ pub struct Block {
 }
 
 #[derive(Debug, Clone)]
-pub struct Param {
-    pub name: Ident,
-    pub ty: TypeExpr,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConstDecl {
-    pub name: Ident,
-    pub ty: TypeExpr,
-    pub value: Expr,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct ImportItem {
-    pub path: String,
-    pub alias: Option<Ident>,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct FunDecl {
-    pub name: Ident,
-    /// `fun Point.sum(self: Point)` 时为 Some(Point)
-    pub on_type: Option<Ident>,
-    pub params: Vec<Param>,
-    pub ret: TypeExpr,
-    pub body: Block,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
 pub enum Item {
-    Fun(FunDecl),
     Struct(StructDecl),
     Const(ConstDecl),
+    Fun(FunDecl),
     Import(ImportItem),
     Stmt(Stmt),
 }
@@ -283,36 +277,36 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn functions(&self) -> impl Iterator<Item = &FunDecl> {
-        self.items.iter().filter_map(|it| match it {
-            Item::Fun(f) => Some(f),
-            _ => None,
-        })
-    }
-
     pub fn structs(&self) -> impl Iterator<Item = &StructDecl> {
-        self.items.iter().filter_map(|it| match it {
+        self.items.iter().filter_map(|i| match i {
             Item::Struct(s) => Some(s),
             _ => None,
         })
     }
 
     pub fn consts(&self) -> impl Iterator<Item = &ConstDecl> {
-        self.items.iter().filter_map(|it| match it {
+        self.items.iter().filter_map(|i| match i {
             Item::Const(c) => Some(c),
             _ => None,
         })
     }
 
+    pub fn functions(&self) -> impl Iterator<Item = &FunDecl> {
+        self.items.iter().filter_map(|i| match i {
+            Item::Fun(f) => Some(f),
+            _ => None,
+        })
+    }
+
     pub fn imports(&self) -> impl Iterator<Item = &ImportItem> {
-        self.items.iter().filter_map(|it| match it {
-            Item::Import(i) => Some(i),
+        self.items.iter().filter_map(|i| match i {
+            Item::Import(x) => Some(x),
             _ => None,
         })
     }
 
     pub fn top_level_stmts(&self) -> impl Iterator<Item = &Stmt> {
-        self.items.iter().filter_map(|it| match it {
+        self.items.iter().filter_map(|i| match i {
             Item::Stmt(s) => Some(s),
             _ => None,
         })
@@ -320,6 +314,6 @@ impl Program {
 
     pub fn has_main(&self) -> bool {
         self.functions()
-            .any(|f| f.name.name == "main" && f.on_type.is_none())
+            .any(|f| f.on_type.is_none() && f.name.name == "main")
     }
 }

@@ -1,8 +1,8 @@
 [package]
 name = "laughter"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "A small teaching language: lexer → parser → typecheck → bytecode → VM"
+description = "Teaching language: lexer → parser → typecheck → bytecode → VM"
 license = "MIT"
 
 [lib]
@@ -14,6 +14,3 @@ name = "laughter"
 path = "src/bin/laughter.rs"
 
 [dependencies]
-
-[profile.release]
-lto = true

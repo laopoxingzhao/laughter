@@ -1,16 +1,13 @@
-//! Laughter：教学向编译语言工具链（库入口）。
+//! Laughter 教学语言运行时库。
 //!
-//! 管线：`Lexer → Parser → Checker → Compiler（字节码）→ VM`。
-//! 二进制 CLI 见 `src/bin/laughter.rs`；集成测试通过本 crate 调用 `vm::run_source`。
+//! 管线：`syntax` → `sema` → `codegen` → `runtime`。
+//! 契约见 `docs/LANGUAGE.md`。
 
-pub mod ast;
-pub mod bytecode;
-pub mod compiler;
-pub mod lexer;
-pub mod loader;
-pub mod parser;
-pub mod resolve;
-pub mod token;
-pub mod types;
-pub mod value;
-pub mod vm;
+pub mod codegen;
+pub mod module_loader;
+pub mod runtime;
+pub mod sema;
+pub mod syntax;
+
+pub use module_loader::{compile_file, compile_path, run_file, run_path};
+pub use runtime::vm::{compile_source, run_source, run_source_file};
