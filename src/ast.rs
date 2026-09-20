@@ -1,3 +1,6 @@
+//! 抽象语法树（AST）：解析器的输出，语义检查与字节码编译的输入。
+//! 节点尽量带 `Span`，错误信息才能指回源码位置。
+
 use crate::token::Span;
 
 #[derive(Debug, Clone, PartialEq)]

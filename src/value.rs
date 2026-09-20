@@ -1,3 +1,6 @@
+//! 运行时值：VM 栈上的数据。
+//! 数组用 `Rc<RefCell<Vec<Value>>>`，调用时按句柄共享（引用语义），便于教学实现且无需 GC。
+
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;

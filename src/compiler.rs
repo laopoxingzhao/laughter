@@ -1,3 +1,8 @@
+//! 编译器：AST → 栈式字节码。
+//!
+//! 局部变量按声明顺序占用栈槽（函数参数在前）；`Call` 后接**函数索引**（不是 argc）。
+//! 控制流用 `Jump`/`JumpIfFalse`/`Loop` 相对偏移，编译时先占位再 `patch_jump`。
+
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -249,10 +254,7 @@ impl Compiler {
         let line = a.span.line;
         if let Some(idx) = &a.index {
             let slot = self.fn_mut().resolve_local(&a.name.name).ok_or_else(|| {
-                CompileError::new(
-                    format!("undefined variable `{}`", a.name.name),
-                    a.name.span,
-                )
+                CompileError::new(format!("undefined variable `{}`", a.name.name), a.name.span)
             })?;
             self.chunk().emit_op(Op::GetLocal, line);
             self.chunk().emit_u16(slot, line);
@@ -264,10 +266,7 @@ impl Compiler {
 
         self.compile_expr(&a.value)?;
         let slot = self.fn_mut().resolve_local(&a.name.name).ok_or_else(|| {
-            CompileError::new(
-                format!("undefined variable `{}`", a.name.name),
-                a.name.span,
-            )
+            CompileError::new(format!("undefined variable `{}`", a.name.name), a.name.span)
         })?;
         self.chunk().emit_op(Op::SetLocal, line);
         self.chunk().emit_u16(slot, line);
@@ -278,12 +277,13 @@ impl Compiler {
     fn compile_if(&mut self, i: &IfStmt) -> Result<(), CompileError> {
         self.compile_expr(&i.cond)?;
         let line = i.span.line;
+        // JumpIfFalse 只 peek 条件不弹栈；两条路径都必须自己 Pop。
         let then_jump = self.chunk().emit_jump(Op::JumpIfFalse, line);
         self.chunk().emit_op(Op::Pop, line);
         self.compile_block(&i.then_block)?;
         match &i.else_branch {
             None => {
-                // Jump over the false-path Pop so the true path does not fall into it.
+                // true 路径须 Jump 越过 false 路径的 Pop，否则会误弹局部槽。
                 let end_jump = self.chunk().emit_jump(Op::Jump, line);
                 self.chunk().patch_jump(then_jump)?;
                 self.chunk().emit_op(Op::Pop, line);
@@ -355,12 +355,7 @@ impl Compiler {
                 }
                 Ok(())
             }
-            Expr::Binary {
-                op,
-                lhs,
-                rhs,
-                span,
-            } => self.compile_binary(*op, lhs, rhs, *span),
+            Expr::Binary { op, lhs, rhs, span } => self.compile_binary(*op, lhs, rhs, *span),
             Expr::Call { callee, args, span } => self.compile_call(&callee.name, args, *span),
             Expr::Index { base, index, span } => {
                 self.compile_expr(base)?;
@@ -427,12 +422,7 @@ impl Compiler {
         }
     }
 
-    fn compile_call(
-        &mut self,
-        name: &str,
-        args: &[Expr],
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_call(&mut self, name: &str, args: &[Expr], span: Span) -> Result<(), CompileError> {
         let line = span.line;
         if name == "print" {
             if args.len() != 1 {

@@ -1,3 +1,8 @@
+//! 栈式虚拟机：解释 `Module` 中的字节码。
+//!
+//! 帧约定：参数已位于 `stack[base..base+arity]`；`let` 继续向栈上压局部槽。
+//! `Return` 时把整帧（参数+局部+临时）truncate 到 `base`，非 void 再压回返回值。
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -54,8 +59,7 @@ impl<'m> Vm<'m> {
                 line: 0,
             });
         }
-        // Args already sit on the stack at base..base+arity; further locals are
-        // pushed by compiled `let` instructions. Do not pre-pad slots.
+        // 参数已在栈上；后续局部由编译后的 `let` 压入。不要在这里 padding 槽位。
         let base = self.stack.len() - argc;
         self.frames.push(Frame { func, ip: 0, base });
         Ok(())
@@ -270,8 +274,7 @@ impl<'m> Vm<'m> {
                 Op::Return => {
                     let frame = self.frames.pop().expect("frame");
                     let f = &self.module.functions[frame.func];
-                    // Discard the callee frame (args + locals + temps) and, for
-                    // non-void functions, leave the return value on the stack.
+                    // 弹掉整个调用帧；void 不压值，非 void 在 base 处留下返回值。
                     if !f.is_void {
                         if self.stack.len() <= frame.base {
                             return Err(VmError {
@@ -483,13 +486,12 @@ fn values_eq(a: &Value, b: &Value, line: u32) -> Result<bool, VmError> {
 fn compare(a: &Value, b: &Value, line: u32) -> Result<i32, VmError> {
     Ok(match (a, b) {
         (Value::Int(x), Value::Int(y)) => x.cmp(y) as i32,
-        (Value::Float(x), Value::Float(y)) => x
-            .partial_cmp(y)
-            .map(|o| o as i32)
-            .ok_or_else(|| VmError {
+        (Value::Float(x), Value::Float(y)) => {
+            x.partial_cmp(y).map(|o| o as i32).ok_or_else(|| VmError {
                 message: "cannot compare NaN".into(),
                 line,
-            })?,
+            })?
+        }
         _ => {
             return Err(VmError {
                 message: format!("cannot order {} and {}", a.type_name(), b.type_name()),
@@ -507,15 +509,24 @@ pub fn run_source_file(file: &str, src: &str) -> Result<Vec<String>, String> {
     use crate::parser::Parser;
     use crate::resolve::Checker;
 
-    let tokens = Lexer::new(src)
-        .tokenize()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    let program = Parser::new(tokens)
-        .parse_program()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    Checker::new(&program)
-        .check()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    let tokens = Lexer::new(src).tokenize().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    let program = Parser::new(tokens).parse_program().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    Checker::new(&program).check().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
     let module = Compiler::compile(&program)
         .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))?;
     let mut vm = Vm::new(&module);
@@ -538,15 +549,24 @@ pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
     use crate::parser::Parser;
     use crate::resolve::Checker;
 
-    let tokens = Lexer::new(src)
-        .tokenize()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    let program = Parser::new(tokens)
-        .parse_program()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
-    Checker::new(&program)
-        .check()
-        .map_err(|e| format!("{file}:{}:{}: error: {}", e.span.line, e.span.col, e.message))?;
+    let tokens = Lexer::new(src).tokenize().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    let program = Parser::new(tokens).parse_program().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
+    Checker::new(&program).check().map_err(|e| {
+        format!(
+            "{file}:{}:{}: error: {}",
+            e.span.line, e.span.col, e.message
+        )
+    })?;
     Compiler::compile(&program)
         .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))
 }

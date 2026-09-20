@@ -1,3 +1,6 @@
+//! CLI：`laughter run|check|disasm <file.lg>`
+//! 诊断格式：编译期 `file:line:col: error:`，运行时 `file:line: runtime error:`。
+
 use std::env;
 use std::fs;
 use std::process::ExitCode;

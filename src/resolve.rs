@@ -1,3 +1,6 @@
+//! 语义检查：作用域、函数签名、表达式类型、返回路径。
+//! 通过后才允许进入编译阶段；错误格式为 `span` + message，CLI 再拼上文件名。
+
 use std::collections::HashMap;
 
 use crate::ast::*;
@@ -102,13 +105,8 @@ impl<'a> Checker<'a> {
             message: m,
             span: f.span,
         })?;
-        self.functions.insert(
-            f.name.name.clone(),
-            FunInfo {
-                params,
-                ret,
-            },
-        );
+        self.functions
+            .insert(f.name.name.clone(), FunInfo { params, ret });
         Ok(())
     }
 
@@ -367,12 +365,10 @@ impl<'a> Checker<'a> {
             Expr::Float { .. } => Ok(Type::Float),
             Expr::Bool { .. } => Ok(Type::Bool),
             Expr::Str { .. } => Ok(Type::Str),
-            Expr::Var { name } => {
-                self.lookup_var(&name.name).ok_or_else(|| CheckError {
-                    message: format!("undefined variable `{}`", name.name),
-                    span: name.span,
-                })
-            }
+            Expr::Var { name } => self.lookup_var(&name.name).ok_or_else(|| CheckError {
+                message: format!("undefined variable `{}`", name.name),
+                span: name.span,
+            }),
             Expr::Unary { op, expr, span } => {
                 let t = self.check_expr(expr)?;
                 match op {
@@ -398,12 +394,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Expr::Binary {
-                op,
-                lhs,
-                rhs,
-                span,
-            } => {
+            Expr::Binary { op, lhs, rhs, span } => {
                 let lt = self.check_expr(lhs)?;
                 let rt = self.check_expr(rhs)?;
                 match op {
@@ -466,11 +457,7 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Call { callee, args, span } => self.check_call(&callee.name, args, *span),
-            Expr::Index {
-                base,
-                index,
-                span,
-            } => {
+            Expr::Index { base, index, span } => {
                 let bt = self.check_expr(base)?;
                 let it = self.check_expr(index)?;
                 if it != Type::Int {
@@ -551,10 +538,14 @@ impl<'a> Checker<'a> {
             return Ok(Type::Int);
         }
 
-        let info = self.functions.get(name).cloned().ok_or_else(|| CheckError {
-            message: format!("undefined function `{name}`"),
-            span,
-        })?;
+        let info = self
+            .functions
+            .get(name)
+            .cloned()
+            .ok_or_else(|| CheckError {
+                message: format!("undefined function `{name}`"),
+                span,
+            })?;
         if args.len() != info.params.len() {
             return Err(CheckError {
                 message: format!(

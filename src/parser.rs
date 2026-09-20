@@ -1,3 +1,6 @@
+//! 语法分析：递归下降，把 `Token` 流解析为 AST。
+//! 表达式优先级：`||` → `&&` → 相等 → 比较 → `+-` → `*/%` → 一元 → 后缀索引/调用。
+
 use crate::ast::*;
 use crate::token::{Span, Token, TokenKind};
 
@@ -587,7 +590,11 @@ mod tests {
             panic!("expected let");
         };
         match &l.value {
-            Expr::Binary { op: BinOp::Add, rhs, .. } => match rhs.as_ref() {
+            Expr::Binary {
+                op: BinOp::Add,
+                rhs,
+                ..
+            } => match rhs.as_ref() {
                 Expr::Binary { op: BinOp::Mul, .. } => {}
                 other => panic!("expected mul on rhs, got {other:?}"),
             },

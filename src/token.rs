@@ -1,3 +1,6 @@
+//! Token 与源位置：词法分析的输出单元，解析器的输入。
+//! `Span` 记录行/列，供后续阶段拼出 `file:line:col: error:` 诊断。
+
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

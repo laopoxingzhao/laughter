@@ -1,3 +1,6 @@
+//! 词法分析：源码字符串 → `Token` 流（以 `Eof` 结尾）。
+//! 负责跳过空白与 `//` 行注释，识别关键字/字面量/运算符，并维护行列号。
+
 use crate::token::{Span, Token, TokenKind};
 
 #[derive(Debug)]
@@ -440,7 +443,10 @@ mod tests {
     #[test]
     fn comments_skipped() {
         let k = kinds("1 // comment\n2");
-        assert_eq!(k, vec![TokenKind::Int(1), TokenKind::Int(2), TokenKind::Eof]);
+        assert_eq!(
+            k,
+            vec![TokenKind::Int(1), TokenKind::Int(2), TokenKind::Eof]
+        );
     }
 
     #[test]

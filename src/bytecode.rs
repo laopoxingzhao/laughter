@@ -1,3 +1,6 @@
+//! 字节码：操作码、`Chunk`（指令流 + 常量池 + 行号表）与编译后函数/模块。
+//! 指令是栈机风格：操作数与结果都经操作数栈；跳转用相对偏移，便于 `patch_jump`。
+
 use std::fmt;
 
 use crate::value::Value;
@@ -124,6 +127,7 @@ impl Chunk {
         Ok(())
     }
 
+    /// 占位跳转偏移，返回回填位置；编译完后用 `patch_jump` 写入真实距离。
     pub fn emit_jump(&mut self, op: Op, line: u32) -> usize {
         self.emit_op(op, line);
         self.emit_u16(0xFFFF, line);
@@ -263,7 +267,7 @@ pub fn op_from_u8(b: u8) -> Option<Op> {
     })
 }
 
-/// Compiled function object.
+/// 编译后的函数对象；`is_void` 决定 VM 在 `Return` 时是否压返回值。
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
@@ -275,11 +279,11 @@ pub struct Function {
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    /// 程序中所有函数；`$toplevel` 为顶层语句合成函数
     pub functions: Vec<Function>,
-    /// index of function named main, if any
+    /// `main` 在 `functions` 中的下标（若有则 run 从它进入）
     pub main_index: Option<usize>,
-    /// synthetic function holding top-level statements (always compiled)
     pub toplevel_index: usize,
-    /// global name table for top-level lets (also used if functions need globals — MVP: functions use locals only)
+    /// MVP 未使用全局名表（顶层变量落在 `$toplevel` 局部槽）
     pub globals: Vec<String>,
 }

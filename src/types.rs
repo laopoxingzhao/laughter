@@ -1,8 +1,9 @@
+//! 语义类型（与 AST 中的 `TypeExpr` 对应）。
+//! 检查器用它判断兼容性；运行时 `Value` 与之大体一一对应（void 无运行时值）。
+
 use std::fmt;
 
 use crate::ast::TypeExpr;
-
-/// Semantic type used by the checker and mirrored by runtime values.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,
