@@ -199,6 +199,8 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// 函数/内建调用的类型检查。
+    /// 步骤：先匹配内建（print/len/...）→ 否则查用户函数 → 核对参数个数与类型。
     pub(crate) fn call(
         &mut self,
         name: &str,

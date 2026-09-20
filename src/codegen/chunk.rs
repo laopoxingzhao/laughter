@@ -35,6 +35,7 @@ impl Chunk {
         }
     }
 
+    /// 写入一条无操作数指令：code 追加操作码字节，lines 记录源码行。
     pub fn emit(&mut self, op: Op, line: u32) {
         self.code.push(op as u8);
         self.lines.push(line);
@@ -57,6 +58,7 @@ impl Chunk {
         Ok((self.constants.len() - 1) as u16)
     }
 
+    /// 压入常量：先放进常量池（相同值复用下标），再发 Const <下标>。
     pub fn emit_const(&mut self, v: Value, line: u32) -> Result<(), String> {
         let i = self.add_const(v)?;
         self.emit(Op::Const, line);
@@ -64,6 +66,7 @@ impl Chunk {
         Ok(())
     }
 
+    /// 发射带占位偏移的跳转，返回待回填的位置；目标未知时先填 0xFFFF。
     pub fn emit_jump(&mut self, op: Op, line: u32) -> usize {
         self.emit(op, line);
         self.emit_u16(0xFFFF, line);
@@ -75,6 +78,7 @@ impl Chunk {
         self.patch_to(at, dest)
     }
 
+    /// 把跳转操作数回填为：从操作数后一字节到 dest 的正向距离。
     pub fn patch_to(&mut self, at: usize, dest: usize) -> Result<(), String> {
         // operand sits at `at`; forward jump = dest - (at+2)
         if dest < at + 2 {
@@ -100,6 +104,7 @@ impl Chunk {
         Ok(())
     }
 
+    /// 反汇编：逐条打印地址、行号、指令名与操作数；最后列出常量表。
     pub fn disassemble(&self, name: &str) -> String {
         use crate::codegen::op::Op as O;
         let mut out = format!("== {name} ==\n");

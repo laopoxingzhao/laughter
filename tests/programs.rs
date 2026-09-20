@@ -1,4 +1,7 @@
 //! 集成测试：对照 docs/LANGUAGE.md。
+//!
+//! 每个 `#[test]` 上方用中文说明「测什么、期望什么」。
+//! 运行：`cargo test --test programs`
 
 use laughter::module_loader::run_file;
 use laughter::runtime::vm::{compile_source, run_source};
@@ -7,18 +10,21 @@ fn run(src: &str) -> Vec<String> {
     run_source(src).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// 测：打印字符串；整数优先级 `1+2*3==7`。
 #[test]
 fn hello_and_arith() {
     assert_eq!(run("print(\"hi\");"), vec!["hi"]);
     assert_eq!(run("print(1 + 2 * 3);"), vec!["7"]);
 }
 
+/// 测：`examples/fib.lg` 递归 fib(10) 输出 55。
 #[test]
 fn fib() {
     let out = run_file("examples/fib.lg").unwrap();
     assert_eq!(out, vec!["55"]);
 }
 
+/// 测：全部 `examples/*.lg` 输出与契约一致（防回归）。
 #[test]
 fn all_examples() {
     for (path, expect) in [
@@ -52,6 +58,7 @@ fn all_examples() {
     }
 }
 
+/// 测：const 编译期折叠；disasm 应含字面量 (20)。
 #[test]
 fn const_fold() {
     let out =
@@ -63,6 +70,7 @@ fn const_fold() {
     assert!(d.contains("(20)"), "{d}");
 }
 
+/// 测：结构体值语义——`b = a` 后改 `b.x` 不影响 `a.x`。
 #[test]
 fn value_semantics() {
     let out = run(r#"
@@ -78,6 +86,7 @@ fn value_semantics() {
     assert_eq!(out, vec!["1", "9"]);
 }
 
+/// 测：多层字段赋值 `o.inner.v = 42`。
 #[test]
 fn multi_level_field_assign() {
     let out = run(r#"
@@ -92,6 +101,7 @@ fn multi_level_field_assign() {
     assert_eq!(out, vec!["42"]);
 }
 
+/// 测：范围 for + continue（跳过 1）+ break（在 3 停）→ 输出 0, 2。
 #[test]
 fn break_continue_and_range() {
     let out = run(r#"
@@ -106,6 +116,7 @@ fn break_continue_and_range() {
     assert_eq!(out, vec!["0", "2"]);
 }
 
+/// 测：int+float 混用、const 赋值、循环外 break、run_source 遇 import、空结构体字面量。
 #[test]
 fn type_errors() {
     assert!(run_source("let x = 1 + 2.5;").is_err());
@@ -116,12 +127,14 @@ fn type_errors() {
     assert!(e.is_err());
 }
 
+/// 测：除零与数组越界等运行时错误。
 #[test]
 fn runtime_errors() {
     assert!(run_source("print(1 / 0);").unwrap_err().contains("zero"));
     assert!(run_source("let a = [1]; print(a[3]);").is_err());
 }
 
+/// 测：数组元素字段写回 + 结构体方法调用。
 #[test]
 fn methods_and_arrays_field() {
     let out = run(r#"
@@ -136,6 +149,7 @@ fn methods_and_arrays_field() {
     assert_eq!(out, vec!["7"]);
 }
 
+/// 测：`.lgb` 编码→解码→执行；魔数须为 LGB1，fib 输出 55。
 #[test]
 fn compile_exec_roundtrip() {
     use laughter::codegen::lgb::{decode_module, encode_module, exec_module};
@@ -147,6 +161,7 @@ fn compile_exec_roundtrip() {
     assert_eq!(out, vec!["55"]);
 }
 
+/// 测：`.lgb` 写入磁盘后再 load/exec（zca 示例输出）。
 #[test]
 fn lgb_file_on_disk() {
     use laughter::codegen::lgb::{encode_module, exec_module, load_lgb, write_lgb};
@@ -162,6 +177,7 @@ fn lgb_file_on_disk() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// 测：`pack` 生成 `.lgpack`；`list` 含清单；`exec` 多文件 import 示例。
 #[test]
 fn lgpack_exec_roundtrip() {
     use laughter::codegen::lgpack::{exec_package, list_package, pack_program, MANIFEST_PATH};

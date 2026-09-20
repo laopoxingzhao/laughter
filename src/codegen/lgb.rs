@@ -75,6 +75,11 @@ fn err(msg: impl Into<String>) -> BytecodeError {
 }
 
 /// 把 `Module` 编码为 `.lgb` 字节。
+/// 把内存里的 Module 编码成 .lgb 字节。
+/// 步骤：
+/// 1. 写文件头：魔数 LGB1、版本、main 下标
+/// 2. 写结构体布局表
+/// 3. 对每个函数：名字、arity、void、常量池、指令、行号表
 pub fn encode_module(module: &Module) -> Result<Vec<u8>, BytecodeError> {
     let mut out = Vec::new();
     out.extend_from_slice(MAGIC);
@@ -136,6 +141,8 @@ pub fn encode_module(module: &Module) -> Result<Vec<u8>, BytecodeError> {
 }
 
 /// 从 `.lgb` 字节解码为 `Module`。
+/// 从 .lgb 字节解码回 Module。
+/// 步骤：校验魔数与版本 → 读入口信息 → 读结构体表 → 读函数表 → 校验下标范围
 pub fn decode_module(bytes: &[u8]) -> Result<Module, BytecodeError> {
     let mut r = Reader { buf: bytes, pos: 0 };
     let magic = r.read_bytes(4)?;
@@ -240,6 +247,7 @@ pub fn load_lgb(path: &Path) -> Result<Module, BytecodeError> {
 }
 
 /// 执行已解码的 Module，返回 print 行。
+/// 在内存 Module 上跑 VM（.lgb 与 .lgpack 共用）。
 pub fn exec_module(module: &Module) -> Result<Vec<String>, String> {
     let mut vm = Vm::new(module);
     vm.run().map_err(|e| {

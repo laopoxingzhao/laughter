@@ -30,9 +30,11 @@ pub struct StructVal {
 }
 
 impl StructVal {
+    /// 按字段名查找字段值（不修改结构体）。
     pub fn get(&self, f: &str) -> Option<&Value> {
         self.fields.iter().find(|(n, _)| n == f).map(|(_, v)| v)
     }
+    /// 按字段名写入；成功 true，字段不存在 false。
     pub fn set(&mut self, f: &str, v: Value) -> bool {
         if let Some(s) = self.fields.iter_mut().find(|(n, _)| n == f) {
             s.1 = v;
@@ -81,6 +83,7 @@ impl Value {
         }
     }
 
+    /// 显示成 print/to_string 的文本（数组 `[a, b]`，结构体 `Name { f: v }`）。
     pub fn display(&self) -> String {
         match self {
             Value::Int(n) => n.to_string(),

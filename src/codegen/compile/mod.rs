@@ -111,6 +111,12 @@ pub struct Compiler {
 
 impl Compiler {
     /// 编译整个程序。`consts` 来自 sema 折叠；输出 `Module` 供 VM 执行/CLI 反汇编。
+    /// 编译整个程序。步骤：
+    /// 1. 登记结构体布局与函数索引（方法名 `Type.name`）
+    /// 2. 为每个函数建 FnC（参数已占槽）
+    /// 3. 依次编译函数体，末尾补 Return
+    /// 4. 编译顶层语句（合成 $toplevel）
+    /// 5. 汇总为 Module
     pub fn compile(
         program: &Program,
         consts: HashMap<String, Value>,

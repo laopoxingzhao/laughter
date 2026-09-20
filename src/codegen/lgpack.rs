@@ -66,6 +66,7 @@ pub struct PackMeta {
 }
 
 /// 解析 MANIFEST.MF 的简易 `Key: value` 行。
+/// 解析清单 Key: value 行；缺省 Main-Bytecode 为 app.lgb
 pub fn parse_manifest(text: &str) -> PackMeta {
     let mut main_bytecode = String::from("app.lgb");
     let mut package_version = String::from(PACKAGE_VERSION);
@@ -106,6 +107,10 @@ fn build_manifest(main_bytecode: &str) -> String {
 /// - `output`：输出包路径，如 `app.lgpack`
 /// - `resources`：额外打进包里的文件；路径保持文件名或相对路径
 /// - `entry_name`：包内字节码文件名，默认 `app.lgb`
+/// 打包 .lgpack（类 JAR）。步骤：
+/// 1. 编译入口 .lg（import 已合并）→ 得到 Module
+/// 2. encode 成 .lgb 字节
+/// 3. 写 ZIP：清单 META-INF/MANIFEST.MF + 入口 app.lgb + resources/*
 pub fn pack_program(
     main_lg: &Path,
     output: &Path,
@@ -150,6 +155,7 @@ pub fn pack_program(
 }
 
 /// 从 `.lgpack` 读出清单与入口 `.lgb` 字节。
+/// 打开 ZIP 包：读清单 → 找到 Main-Bytecode 指向的条目 → 取出 .lgb 字节
 pub fn read_package(path: &Path) -> Result<(PackMeta, Vec<u8>), PackError> {
     let file = std::fs::File::open(path)
         .map_err(|e| err(format!("cannot open {}: {e}", path.display())))?;
@@ -179,6 +185,7 @@ pub fn read_package(path: &Path) -> Result<(PackMeta, Vec<u8>), PackError> {
 }
 
 /// 执行 `.lgpack`。
+/// 执行 .lgpack：读包 → 校验包版本 → 解码字节码 → VM 执行
 pub fn exec_package(path: &Path) -> Result<Vec<String>, String> {
     let (meta, bytes) = read_package(path).map_err(|e| e.to_string())?;
     if meta.package_version != PACKAGE_VERSION {

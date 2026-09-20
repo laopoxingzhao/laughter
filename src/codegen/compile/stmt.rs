@@ -11,6 +11,7 @@ impl Compiler {
         Ok(())
     }
 
+    /// 编译语句：按种类分派（let/赋值/if/while/for/break/continue/return/块）。
     pub(crate) fn stmt(&mut self, s: &Stmt) -> Result<(), CompileError> {
         match s {
             Stmt::Let(l) => {
@@ -20,6 +21,7 @@ impl Compiler {
             }
             Stmt::Assign(a) => self.assign(a),
             Stmt::If(i) => self.if_stmt(i),
+            // while：循环头 → 条件 → 假跳出；真则 Pop 条件、执行体；continue→条件，break→出口
             Stmt::While(w) => {
                 let line = w.span.line;
                 let start = self.chunk().code.len();
@@ -46,6 +48,7 @@ impl Compiler {
                 Ok(())
             }
             Stmt::For(fr) => self.for_stmt(fr),
+            // break：只发射向前 Jump，偏移在循环编译结束时回填到出口
             Stmt::Break(sp) => {
                 if self.loops.is_empty() {
                     return Err(CompileError::at("`break` outside loop", *sp));
@@ -54,6 +57,7 @@ impl Compiler {
                 self.loops.last_mut().unwrap().breaks.push(j);
                 Ok(())
             }
+            // continue：Jump 回填到增量/回边，避免数组 for 死循环
             Stmt::Continue(sp) => {
                 if self.loops.is_empty() {
                     return Err(CompileError::at("`continue` outside loop", *sp));
@@ -62,6 +66,7 @@ impl Compiler {
                 self.loops.last_mut().unwrap().continues.push(j);
                 Ok(())
             }
+            // return：有值则先压栈再 Return
             Stmt::Return(r) => {
                 match &r.value {
                     None => self.chunk().emit(Op::Return, r.span.line),
@@ -188,6 +193,12 @@ impl Compiler {
         }
     }
 
+    /// 编译 if。步骤：
+    /// 1. 编译条件（结果在栈顶）
+    /// 2. JumpIfFalse 到 else/出口；true 路径先 Pop 条件
+    /// 3. 编译 then 块；有 else 则 Jump 过 else，false 路径 Pop 后编译 else
+    /// 4. 两路都要 Pop 条件，避免栈残留
+    /// 编译 if：条件 → JumpIfFalse → 两路都要 Pop 条件，避免栈残留。
     pub(crate) fn if_stmt(&mut self, i: &IfStmt) -> Result<(), CompileError> {
         let line = i.span.line;
         self.expr(&i.cond)?;

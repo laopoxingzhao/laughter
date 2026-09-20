@@ -71,6 +71,11 @@ impl<'a> Checker<'a> {
 
     /// 检查入口：先登记 struct/函数/const，再检查函数体与顶层语句。
     /// 返回折叠后的 const 表，供编译器 `emit_const`。
+    /// 语义检查总入口。步骤：
+    /// 1. 登记 struct / fun / const（const 会折叠）
+    /// 2. 检查每个函数体
+    /// 3. 检查顶层语句（有 main 时顶层不执行但仍须合法）
+    /// 4. 返回折叠后的 const 表
     pub fn check(mut self) -> Result<HashMap<String, Value>, CheckError> {
         for s in self.program.structs() {
             self.declare_struct(s)?;

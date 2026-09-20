@@ -67,6 +67,7 @@ impl<'m> Vm<'m> {
         self.loop_run(&mut out)
     }
 
+    /// 压入调用帧：检查递归深度 → `base = 栈长-参数个数` → 记录 func/ip/base。
     fn push_frame(&mut self, func: usize) -> Result<(), VmError> {
         if self.frames.len() >= self.max_depth {
             return Err(VmError {
@@ -96,6 +97,7 @@ impl<'m> Vm<'m> {
             .unwrap_or(0)
     }
 
+    /// 从当前函数字节码 at 处读一个小端 u16 操作数。
     fn u16(&self, at: usize) -> Result<u16, VmError> {
         let f = self.frames.last().unwrap();
         let code = &self.module.functions[f.func].chunk.code;
@@ -108,6 +110,7 @@ impl<'m> Vm<'m> {
         Ok(u16::from_le_bytes([code[at], code[at + 1]]))
     }
 
+    /// 弹出栈顶值；栈空则报 stack underflow。
     fn pop(&mut self, line: u32) -> Result<Value, VmError> {
         self.stack.pop().ok_or_else(|| VmError {
             message: "stack underflow".into(),

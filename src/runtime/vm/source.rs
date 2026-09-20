@@ -18,10 +18,12 @@ fn parse(src: &str, file: &str) -> Result<crate::syntax::ast::Program, String> {
     })
 }
 
+/// 单文件字符串 → Module（测试常用）。步骤同 compile_source_file。
 pub fn compile_source(src: &str) -> Result<Module, String> {
     compile_source_file("<input>", src)
 }
 
+/// 单文件编译：parse → 若含 import 则报错 → Checker → Compiler
 pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
     use crate::codegen::compile::Compiler;
     use crate::sema::check::Checker;
@@ -41,6 +43,7 @@ pub fn compile_source_file(file: &str, src: &str) -> Result<Module, String> {
         .map_err(|e| format!("{file}:{}:{}: error: {}", e.line, e.col, e.message))
 }
 
+/// 单文件源码直接执行（无 import）。
 pub fn run_source(src: &str) -> Result<Vec<String>, String> {
     run_source_file("<input>", src)
 }

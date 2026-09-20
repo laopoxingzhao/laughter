@@ -55,6 +55,8 @@ fn resolve(base_file: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
+/// 递归加载一个 `.lg` 文件。
+/// 步骤：规范化路径查环 → parse → 递归处理 import → 合并声明到 `out`。
 fn load(path: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<Item>) -> Result<(), String> {
     let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if stack.iter().any(|p| p == &canon) {
