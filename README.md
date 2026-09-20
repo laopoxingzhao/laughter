@@ -7,6 +7,8 @@
 | 源文件后缀 | `.lg` |
 | 宿主实现 | Rust + Cargo |
 | 仓库 | https://github.com/laopoxingzhao/laughter |
+| 许可证 | [MIT](LICENSE) |
+| CI | GitHub Actions：`cargo fmt --check` + `cargo test` |
 | 设计文档 | [`laughter-mvp.md`](docs/compose/spec/laughter-mvp.md)、[`lang-mvp-plus.md`](docs/compose/spec/lang-mvp-plus.md)、[`lang-next.md`](docs/compose/spec/lang-next.md) |
 
 ## 构建与测试
