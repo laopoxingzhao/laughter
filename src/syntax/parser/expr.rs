@@ -7,6 +7,69 @@
 
 use super::*;
 
+/// 把 `s"..."` 的原始内容拆成字面量片段与 `{expr}` 片段。
+/// 表达式再交给 Parser 二次解析。
+pub(crate) fn split_interp(raw: &str, span: Span) -> Result<Vec<InterpPart>, ParseError> {
+    let mut parts = vec![];
+    let mut buf = String::new();
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            if !buf.is_empty() {
+                parts.push(InterpPart::Text(std::mem::take(&mut buf)));
+            }
+            let mut expr_src = String::new();
+            let mut closed = false;
+            while let Some(ch) = chars.next() {
+                if ch == '}' {
+                    closed = true;
+                    break;
+                }
+                expr_src.push(ch);
+            }
+            if !closed {
+                return Err(ParseError {
+                    message: "插值表达式缺少 `}`".into(),
+                    span,
+                });
+            }
+            let toks = crate::syntax::lexer::Lexer::new(&expr_src)
+                .tokenize()
+                .map_err(|e| ParseError {
+                    message: format!("插值表达式词法错误: {}", e.message),
+                    span,
+                })?;
+            let mut p = Parser::new(toks);
+            let e = p.expr().map_err(|e| ParseError {
+                message: format!("插值表达式语法错误: {}", e.message),
+                span,
+            })?;
+            parts.push(InterpPart::Expr(e));
+        } else if c == '\\' {
+            match chars.next() {
+                Some('n') => buf.push('\n'),
+                Some('t') => buf.push('\t'),
+                Some('\\') => buf.push('\\'),
+                Some('"') => buf.push('"'),
+                Some('{') => buf.push('{'),
+                Some('}') => buf.push('}'),
+                _ => {
+                    return Err(ParseError {
+                        message: "插值字符串转义无效".into(),
+                        span,
+                    })
+                }
+            }
+        } else {
+            buf.push(c);
+        }
+    }
+    if !buf.is_empty() {
+        parts.push(InterpPart::Text(buf));
+    }
+    Ok(parts)
+}
+
 impl Parser {
     /// 表达式入口：允许 `a..b`（范围；主要给 for 使用）。
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
@@ -166,7 +229,31 @@ impl Parser {
     }
 
     /// 一元 `-` / `!`：若有则吃掉运算符，再解析右边（可以连续多个一元）。
+    /// 一元：`-` `!` 以及 `&` `&mut` `*`（指针）
     pub(crate) fn unary(&mut self) -> Result<Expr, ParseError> {
+        if self.check(&TokenKind::Amp) {
+            let t = self.advance();
+            let mutable = if self.check(&TokenKind::Mut) {
+                self.advance();
+                true
+            } else {
+                false
+            };
+            let target = self.unary()?;
+            return Ok(Expr::Ref {
+                mutable,
+                target: Box::new(target),
+                span: t.span,
+            });
+        }
+        if self.check(&TokenKind::Star) {
+            let t = self.advance();
+            let ptr = self.unary()?;
+            return Ok(Expr::Deref {
+                ptr: Box::new(ptr),
+                span: t.span,
+            });
+        }
         if self.check(&TokenKind::Minus) {
             let t = self.advance();
             let e = self.unary()?;
@@ -266,6 +353,18 @@ impl Parser {
                     span: t.span,
                 })
             }
+            TokenKind::InterpStr(raw) => {
+                self.advance();
+                let parts = crate::syntax::parser::expr::split_interp(&raw, t.span)?;
+                return Ok(Expr::Interp {
+                    parts,
+                    span: t.span,
+                });
+            }
+            TokenKind::Nil => {
+                self.advance();
+                return Ok(Expr::Nil { span: t.span });
+            }
             TokenKind::Str(v) => {
                 self.advance();
                 Ok(Expr::Str {
@@ -334,9 +433,20 @@ impl Parser {
                     if !self.check(&TokenKind::RBrace) {
                         loop {
                             let n = self.expect_ident()?;
-                            self.expect(TokenKind::Colon, "`:`")?;
-                            let v = self.expr()?;
-                            fields.push((n, v));
+                            // 简写 `Point { x, y }` 或完整 `Point { x: 1 }`
+                            if self.check(&TokenKind::Colon) {
+                                self.advance();
+                                let v = self.expr()?;
+                                fields.push(FieldInit {
+                                    name: n,
+                                    value: Some(v),
+                                });
+                            } else {
+                                fields.push(FieldInit {
+                                    name: n,
+                                    value: None,
+                                });
+                            }
                             if self.check(&TokenKind::Comma) {
                                 self.advance();
                             } else {

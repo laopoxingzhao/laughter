@@ -105,6 +105,12 @@ impl<'a> Lexer<'a> {
             return Ok(Token::new(TokenKind::Eof, span));
         };
         if c.is_ascii_alphabetic() || c == b'_' {
+            // s"..."：插值字符串
+            if c == b's' && self.peek2() == Some(b'"') {
+                let start = self.bump();
+                let _ = start;
+                return self.interp_string(span);
+            }
             return Ok(self.ident_kw(span));
         }
         if c.is_ascii_digit() {
@@ -217,10 +223,7 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::AndAnd
                 } else {
-                    return Err(LexError {
-                        message: "期望 `&&`".into(),
-                        span,
-                    });
+                    TokenKind::Amp
                 }
             }
             b'|' => {
@@ -267,11 +270,14 @@ impl<'a> Lexer<'a> {
         let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
         let kind = match text {
             "fun" => TokenKind::Fun,
+            "fn" => TokenKind::Fn,
             "struct" => TokenKind::Struct,
             "const" => TokenKind::Const,
             "import" => TokenKind::Import,
             "as" => TokenKind::As,
             "let" => TokenKind::Let,
+            "mut" => TokenKind::Mut,
+            "nil" => TokenKind::Nil,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "while" => TokenKind::While,
@@ -294,6 +300,53 @@ impl<'a> Lexer<'a> {
 
     /// 数字字面量：整数或 `1.5` 形式的浮点（小数点后必须跟数字才算浮点）。
     /// 数字：先吃连续数字，若出现「小数点+后继数字」则再吃小数部分。
+    /// 插值字符串 `s"..."`：内容原样存进 InterpStr，`{...}` 由解析器拆表达式。
+    fn interp_string(&mut self, span: Span) -> Result<Token, LexError> {
+        // 此时已消费开头的 s，需再消费引号
+        self.bump();
+        let mut s = String::new();
+        loop {
+            match self.bump() {
+                None => {
+                    return Err(LexError {
+                        message: "插值字符串未闭合".into(),
+                        span,
+                    })
+                }
+                Some(b'"') => break,
+                Some(b'\\') => match self.bump() {
+                    Some(b'n') => s.push('\n'),
+                    Some(b't') => s.push('\t'),
+                    Some(b'\\') => s.push('\\'),
+                    Some(b'"') => s.push('"'),
+                    _ => {
+                        return Err(LexError {
+                            message: "无效的转义字符".into(),
+                            span,
+                        })
+                    }
+                },
+                Some(c) if c < 0x80 => s.push(c as char),
+                Some(c) => {
+                    let mut bytes = vec![c];
+                    while matches!(self.peek(), Some(b) if b & 0xC0 == 0x80) {
+                        bytes.push(self.bump().unwrap());
+                    }
+                    match std::str::from_utf8(&bytes) {
+                        Ok(t) => s.push_str(t),
+                        Err(_) => {
+                            return Err(LexError {
+                                message: "字符串中含无效 UTF-8".into(),
+                                span,
+                            })
+                        }
+                    }
+                }
+            }
+        }
+        Ok(Token::new(TokenKind::InterpStr(s), span))
+    }
+
     fn number(&mut self, span: Span) -> Result<Token, LexError> {
         let start = self.pos;
         while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {

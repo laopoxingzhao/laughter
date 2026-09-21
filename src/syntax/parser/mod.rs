@@ -34,7 +34,7 @@ impl Parser {
                 items.push(Item::Struct(self.struct_decl()?));
             } else if self.check(&TokenKind::Const) {
                 items.push(Item::Const(self.const_decl()?));
-            } else if self.check(&TokenKind::Fun) {
+            } else if self.check(&TokenKind::Fun) || self.check(&TokenKind::Fn) {
                 items.push(Item::Fun(self.fun_decl()?));
             } else if self.check(&TokenKind::Import) {
                 items.push(Item::Import(self.import_item()?));
@@ -96,13 +96,18 @@ impl Parser {
         }
     }
 
-    /// 仅 `{ ident :` 视为结构体字面量；`{ }` 留给控制流空块。
+    /// `{ ident :` 或 `{ ident ,` 或 `{ ident }` 时像结构体字面量（支持字段简写）。
     fn struct_lit_ahead(&self) -> bool {
         if self.pos + 2 >= self.tokens.len() {
             return false;
         }
-        matches!(&self.tokens[self.pos + 1].kind, TokenKind::Ident(_))
-            && matches!(&self.tokens[self.pos + 2].kind, TokenKind::Colon)
+        if !matches!(self.tokens[self.pos + 1].kind, TokenKind::Ident(_)) {
+            return false;
+        }
+        matches!(
+            self.tokens.get(self.pos + 2).map(|t| &t.kind),
+            Some(TokenKind::Colon) | Some(TokenKind::Comma) | Some(TokenKind::RBrace)
+        )
     }
 }
 

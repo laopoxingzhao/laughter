@@ -4,6 +4,21 @@ use super::*;
 impl Parser {
     /// 解析类型：标量关键字 / 结构体名，后面可跟 `[]` 表示数组。
     pub(crate) fn ty(&mut self) -> Result<TypeExpr, ParseError> {
+        // `&T` / `&mut T`：先吃 &，可选 mut，再解析内层类型
+        if self.check(&TokenKind::Amp) {
+            let _at = self.advance();
+            let mutable = if self.check(&TokenKind::Mut) {
+                self.advance();
+                true
+            } else {
+                false
+            };
+            let inner = self.ty()?;
+            return Ok(TypeExpr::Ref {
+                mutable,
+                inner: Box::new(inner),
+            });
+        }
         let t = self.advance();
         let base = match &t.kind {
             TokenKind::TyInt => TypeExpr::Int,
@@ -123,7 +138,11 @@ impl Parser {
     /// 函数/方法声明。
     /// 步骤：fun → 名字（若是 `Type.method` 则记录 on_type）→ 参数表 → `->` 返回类型 → 函数体块
     pub(crate) fn fun_decl(&mut self) -> Result<FunDecl, ParseError> {
-        let start = self.expect(TokenKind::Fun, "`fun`")?.span;
+        let start = if self.check(&TokenKind::Fun) {
+            self.expect(TokenKind::Fun, "`fun` 或 `fn`")?.span
+        } else {
+            self.expect(TokenKind::Fn, "`fun` 或 `fn`")?.span
+        };
         let first = self.expect_ident()?;
         let (on_type, name) = if self.check(&TokenKind::Dot) {
             self.advance();

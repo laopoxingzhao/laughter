@@ -31,6 +31,11 @@ pub enum Type {
     Array(Box<Type>),
     /// 结构体类型名
     Struct(String),
+    /// `&T` / `&mut T`：安全引用（可空）
+    Ref {
+        mutable: bool,
+        inner: Box<Type>,
+    },
 }
 
 impl Type {
@@ -51,6 +56,10 @@ impl Type {
                 }
                 Type::Struct(n.clone())
             }
+            TypeExpr::Ref { mutable, inner } => Type::Ref {
+                mutable: *mutable,
+                inner: Box::new(Type::from_ast(inner, structs)?),
+            },
         })
     }
 
@@ -73,6 +82,13 @@ impl fmt::Display for Type {
             Type::Void => write!(f, "void"),
             Type::Array(t) => write!(f, "{t}[]"),
             Type::Struct(n) => write!(f, "{n}"),
+            Type::Ref { mutable, inner } => {
+                if *mutable {
+                    write!(f, "&mut {inner}")
+                } else {
+                    write!(f, "&{inner}")
+                }
+            }
         }
     }
 }

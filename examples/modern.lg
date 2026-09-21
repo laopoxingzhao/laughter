@@ -1,0 +1,21 @@
+// 现代化语法：fn、字符串插值、结构体简写、隐式 return
+struct Point {
+    x: int,
+    y: int,
+}
+
+fn add(a: int, b: int) -> int {
+    a + b
+}
+
+fn main() -> void {
+    let n = 3;
+    print(s"n={n}, double={add(n, n)}");
+
+    let x = 7;
+    let y = 8;
+    let p = Point { x, y };
+    print(p.x);
+    print(p.y);
+    print(add(2, 5));
+}

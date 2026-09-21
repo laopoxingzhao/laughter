@@ -76,6 +76,7 @@ impl Parser {
                     fields: vec![],
                     value,
                     span: semi.span,
+                    via_deref: false,
                 }));
             }
             if self.check(&TokenKind::LBracket) {
@@ -97,6 +98,7 @@ impl Parser {
                         fields,
                         value,
                         span: semi.span,
+                        via_deref: false,
                     }));
                 }
             }
@@ -116,16 +118,59 @@ impl Parser {
                         fields,
                         value,
                         span: semi.span,
+                        via_deref: false,
                     }));
                 }
             }
             self.pos = save;
         }
 
+        // `*p = v`：解引用赋值
+        if self.check(&TokenKind::Star) {
+            let save = self.pos;
+            self.advance();
+            let ptr = self.expr()?;
+            if self.check(&TokenKind::Assign) {
+                self.advance();
+                let value = self.expr()?;
+                let semi = self.expect(TokenKind::Semi, "`;`")?;
+                // 用临时名字表示通过指针赋值；编译器看 via_deref + value
+                return Ok(Stmt::Assign(AssignStmt {
+                    name: Ident {
+                        name: String::new(),
+                        span: semi.span,
+                    },
+                    index: None,
+                    fields: vec![],
+                    value: Expr::Binary {
+                        op: crate::syntax::ast::BinOp::Eq,
+                        lhs: Box::new(ptr),
+                        rhs: Box::new(value),
+                        span: semi.span,
+                    },
+                    span: semi.span,
+                    via_deref: true,
+                }));
+            }
+            self.pos = save;
+        }
+
         let expr = self.expr()?;
         let span = expr.span();
+        // 无分号且后面是 `}`：函数体末尾隐式 return
+        if self.check(&TokenKind::RBrace) || self.check(&TokenKind::Eof) {
+            return Ok(Stmt::Expr(ExprStmt {
+                expr,
+                span,
+                implicit_return: true,
+            }));
+        }
         self.expect(TokenKind::Semi, "`;` after expression")?;
-        Ok(Stmt::Expr(ExprStmt { expr, span }))
+        Ok(Stmt::Expr(ExprStmt {
+            expr,
+            span,
+            implicit_return: false,
+        }))
     }
 
     /// `let 名字 [: 类型] = 值;`

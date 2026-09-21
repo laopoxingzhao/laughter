@@ -182,27 +182,93 @@ impl<'a> Checker<'a> {
                         span: *span,
                     });
                 }
-                for (fn_, fe) in fields {
+                for fi in fields {
                     let exp = decl
                         .iter()
-                        .find(|(n, _)| n == &fn_.name)
+                        .find(|(n, _)| n == &fi.name.name)
                         .map(|(_, t)| t.clone())
                         .ok_or_else(|| CheckError {
-                            message: format!("`{}` 没有字段 `{}`", name.name, fn_.name),
-                            span: fn_.span,
+                            message: format!("`{}` 没有字段 `{}`", name.name, fi.name.name),
+                            span: fi.name.span,
                         })?;
-                    let got = self.expr_ty(fe)?;
+                    // 简写 `{ x }`：类型为变量 x 的类型
+                    let fe = match &fi.value {
+                        Some(e) => e.clone(),
+                        None => Expr::Var {
+                            name: fi.name.clone(),
+                        },
+                    };
+                    let got = self.expr_ty(&fe)?;
                     if got != exp {
                         return Err(CheckError {
                             message: format!(
-                                "field `{}`: expected `{exp}`, found `{got}`",
-                                fn_.name
+                                "字段 `{}`：期望 `{exp}`，实际是 `{got}`",
+                                fi.name.name
                             ),
                             span: fe.span(),
                         });
                     }
                 }
                 Ok(Type::Struct(name.name.clone()))
+            }
+            Expr::Nil { .. } => {
+                // nil：万能空引用；与任何 &T 的赋值兼容（具体类型在 let/参数处核对）
+                Ok(Type::Ref {
+                    mutable: false,
+                    inner: Box::new(Type::Void),
+                })
+            }
+            Expr::Ref {
+                mutable,
+                target,
+                span,
+            } => {
+                // 左值：变量或数组元素
+                match target.as_ref() {
+                    Expr::Var { name } => {
+                        let t = self.expr_ty(target)?;
+                        if t == Type::Void {
+                            return Err(CheckError {
+                                message: "不能取 void 的引用".into(),
+                                span: *span,
+                            });
+                        }
+                        let _ = name;
+                        Ok(Type::Ref {
+                            mutable: *mutable,
+                            inner: Box::new(t),
+                        })
+                    }
+                    Expr::Index { .. } => {
+                        let t = self.expr_ty(target)?;
+                        Ok(Type::Ref {
+                            mutable: *mutable,
+                            inner: Box::new(t),
+                        })
+                    }
+                    _ => Err(CheckError {
+                        message: "只能对变量或数组元素取引用".into(),
+                        span: *span,
+                    }),
+                }
+            }
+            Expr::Deref { ptr, span } => {
+                let pt = self.expr_ty(ptr)?;
+                match pt {
+                    Type::Ref { inner, .. } => Ok(*inner),
+                    other => Err(CheckError {
+                        message: format!("`*` 需要引用类型，实际是 `{other}`"),
+                        span: *span,
+                    }),
+                }
+            }
+            Expr::Interp { parts, .. } => {
+                for p in parts {
+                    if let InterpPart::Expr(e) = p {
+                        self.expr_ty(e)?;
+                    }
+                }
+                Ok(Type::Str)
             }
         }
     }
@@ -399,6 +465,9 @@ fn bin_result(op: BinOp, lt: &Type, rt: &Type) -> Result<Type, String> {
             }
         }
         BinOp::Eq | BinOp::Ne => {
+            if matches!(lt, Type::Ref { .. }) && matches!(rt, Type::Ref { .. }) {
+                return Ok(Type::Bool);
+            }
             if lt == rt && matches!(lt, Type::Int | Type::Float | Type::Bool | Type::Str) {
                 Ok(Type::Bool)
             } else {

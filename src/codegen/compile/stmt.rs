@@ -78,6 +78,10 @@ impl Compiler {
                 Ok(())
             }
             Stmt::Expr(e) => {
+                // 函数体末尾隐式 return
+                if e.implicit_return && !matches!(e.expr, Expr::Call { .. }) {
+                    // 由 compile 函数体末尾统一处理更稳妥；此处仍按表达式语句编译并 Pop
+                }
                 let void = match &e.expr {
                     Expr::Call { callee, .. } => self.void_call(&callee.name),
                     Expr::MethodCall { method, .. } => self.void_call(&method.name),
@@ -113,6 +117,15 @@ impl Compiler {
     /// 3) `p.f = e`：值语义，取出/写回见下方分支
     pub(crate) fn assign(&mut self, a: &AssignStmt) -> Result<(), CompileError> {
         let line = a.span.line;
+        // `*p = v`：value 为 Binary{Eq, ptr, v} + via_deref
+        if a.via_deref {
+            if let Expr::Binary { lhs, rhs, .. } = &a.value {
+                self.expr(lhs)?;
+                self.expr(rhs)?;
+                self.chunk().emit(Op::DerefWrite, line);
+                return Ok(());
+            }
+        }
         let slot = self.f().slot(&a.name.name).ok_or_else(|| {
             CompileError::at(format!("未定义的变量 `{}`", a.name.name), a.name.span)
         })?;

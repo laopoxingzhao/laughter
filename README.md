@@ -23,10 +23,11 @@ cargo run -- disasm examples/hello.lg
 
 ## 语言速览
 
-- 类型：`int` `float` `bool` `string` `T[]` `struct` `void`
+- 类型：`int` `float` `bool` `string` `T[]` `struct` `void` `&T` / `&mut T`
+- 指针：`&x` / `&mut x` / `*p` / `nil`
+- 现代语法：`fn`、`s"..."` 插值、`Point { x, y }` 简写、隐式 return
 - `let` / `const` / 函数 / 方法 / 数组 / `import`
 - 控制流：`if` / `while` / `for-in` / `for i in a..b` / `break` / `continue`
-- 内建：`print` `len` `str_at` `str_sub` `to_string` `push` `pop` `input`
 - 交付：字节码 `.lgb`、类 JAR 包 `.lgpack`（见 [`docs/TOOLS.md`](docs/TOOLS.md)）
 
 细节以 **`docs/`** 目录为准；示例在 `examples/`。

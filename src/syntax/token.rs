@@ -30,13 +30,21 @@ pub enum TokenKind {
     Int(i64),
     Float(f64),
     Str(String),
+    /// 插值字符串：`s"..."`，花括号内为表达式
+    InterpStr(String),
     // keywords
     Fun,
+    /// 与 `fun` 等价的现代关键字
+    Fn,
     Struct,
     Const,
     Import,
     As,
     Let,
+    /// 可变引用修饰：`&mut T` / `&mut x`
+    Mut,
+    /// 空指针
+    Nil,
     If,
     Else,
     While,
@@ -68,6 +76,8 @@ pub enum TokenKind {
     // operators
     Plus,
     Minus,
+    /// 单个 `&`：取引用；`&&` 仍是逻辑与
+    Amp,
     Star,
     Slash,
     Percent,
@@ -91,12 +101,16 @@ impl fmt::Display for TokenKind {
             TokenKind::Int(n) => return write!(f, "integer `{n}`"),
             TokenKind::Float(n) => return write!(f, "float `{n}`"),
             TokenKind::Str(s) => return write!(f, "string `{s:?}`"),
+            TokenKind::InterpStr(s) => return write!(f, "interpolated `s{s:?}`"),
             TokenKind::Fun => "`fun`",
+            TokenKind::Fn => "`fn`",
             TokenKind::Struct => "`struct`",
             TokenKind::Const => "`const`",
             TokenKind::Import => "`import`",
             TokenKind::As => "`as`",
             TokenKind::Let => "`let`",
+            TokenKind::Mut => "`mut`",
+            TokenKind::Nil => "`nil`",
             TokenKind::If => "`if`",
             TokenKind::Else => "`else`",
             TokenKind::While => "`while`",
@@ -126,6 +140,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Arrow => "`->`",
             TokenKind::Plus => "`+`",
             TokenKind::Minus => "`-`",
+            TokenKind::Amp => "`&`",
             TokenKind::Star => "`*`",
             TokenKind::Slash => "`/`",
             TokenKind::Percent => "`%`",

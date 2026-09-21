@@ -102,20 +102,87 @@ impl Compiler {
                 self.chunk().emit_u16(elems.len() as u16, span.line);
                 Ok(())
             }
+            Expr::Nil { span } => {
+                self.chunk().emit(Op::Nil, span.line);
+                Ok(())
+            }
+            Expr::Ref {
+                mutable,
+                target,
+                span,
+            } => {
+                let Expr::Var { name } = target.as_ref() else {
+                    // 数组元素引用：编译数组与下标后由 VM 生成 ArrayEl —— 本期简化：仅变量
+                    return Err(CompileError::at(
+                        "本期仅支持对变量取引用 `&x` / `&mut x`",
+                        *span,
+                    ));
+                };
+                let slot = self.f().slot(&name.name).ok_or_else(|| {
+                    CompileError::at(format!("未定义的变量 `{}`", name.name), name.span)
+                })?;
+                let op = if *mutable {
+                    Op::RefMutLocal
+                } else {
+                    Op::RefLocal
+                };
+                self.chunk().emit(op, span.line);
+                self.chunk().emit_u16(slot, span.line);
+                Ok(())
+            }
+            Expr::Deref { ptr, span } => {
+                self.expr(ptr)?;
+                self.chunk().emit(Op::DerefRead, span.line);
+                Ok(())
+            }
+            Expr::Interp { parts, span } => {
+                // 依次：片段 → to_string → 两两 Add 拼接
+                let mut first = true;
+                for p in parts {
+                    match p {
+                        InterpPart::Text(s) => {
+                            self.chunk()
+                                .emit_const(Value::Str(Rc::from(s.as_str())), span.line)?;
+                        }
+                        InterpPart::Expr(e) => {
+                            self.expr(e)?;
+                            self.chunk().emit(Op::ToString, span.line);
+                        }
+                    }
+                    if first {
+                        first = false;
+                    } else {
+                        self.chunk().emit(Op::Add, span.line);
+                    }
+                }
+                if first {
+                    // 空插值串
+                    self.chunk()
+                        .emit_const(Value::Str(Rc::from("")), span.line)?;
+                }
+                Ok(())
+            }
             Expr::StructLit { name, fields, span } => {
                 let idx = *self.sidx.get(&name.name).ok_or_else(|| {
                     CompileError::at(format!("未知结构体 `{}`", name.name), name.span)
                 })?;
                 let decl = self.stypes[idx].clone();
                 for fname in &decl.fields {
-                    let (_, e) =
-                        fields
-                            .iter()
-                            .find(|(n, _)| &n.name == fname)
-                            .ok_or_else(|| {
-                                CompileError::at(format!("缺少字段 `{fname}`"), name.span)
-                            })?;
-                    self.expr(e)?;
+                    let fi = fields
+                        .iter()
+                        .find(|f| &f.name.name == fname)
+                        .ok_or_else(|| {
+                            CompileError::at(format!("缺少字段 `{fname}`"), name.span)
+                        })?;
+                    match &fi.value {
+                        Some(e) => self.expr(e)?,
+                        None => {
+                            // 简写：编译同名变量
+                            self.expr(&Expr::Var {
+                                name: fi.name.clone(),
+                            })?
+                        }
+                    }
                 }
                 self.chunk().emit(Op::NewStruct, span.line);
                 self.chunk().emit_u16(idx as u16, span.line);

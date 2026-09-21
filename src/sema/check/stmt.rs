@@ -31,6 +31,9 @@ impl<'a> Checker<'a> {
                                 span: l.span,
                             });
                         }
+                    } else if matches!(&l.value, Expr::Nil { .. }) && matches!(t, Type::Ref { .. })
+                    {
+                        // nil 可赋给任意引用
                     } else if t != vt {
                         return Err(CheckError {
                             message: format!("let `{}` 标注 `{t}`，但初始值是 `{vt}`", l.name.name),
@@ -45,6 +48,40 @@ impl<'a> Checker<'a> {
             }
             // 赋值：不能改 const；求出目标类型后与右值比较
             Stmt::Assign(a) => {
+                // `*p = v`：检查 p 为引用且 v 类型匹配
+                if a.via_deref {
+                    if let Expr::Binary { lhs, rhs, .. } = &a.value {
+                        let pt = self.expr_ty(lhs)?;
+                        let vt = self.expr_ty(rhs)?;
+                        match pt {
+                            Type::Ref { mutable, inner } => {
+                                if !mutable {
+                                    return Err(CheckError {
+                                        message: format!(
+                                            "不能通过只读引用 `{inner}` 赋值（需要 &mut）"
+                                        ),
+                                        span: a.span,
+                                    });
+                                }
+                                if vt != *inner {
+                                    return Err(CheckError {
+                                        message: format!(
+                                            "解引用赋值类型不匹配：`{inner}` 与 `{vt}`"
+                                        ),
+                                        span: a.span,
+                                    });
+                                }
+                                return Ok(());
+                            }
+                            other => {
+                                return Err(CheckError {
+                                    message: format!("`*=` 需要引用，实际是 `{other}`"),
+                                    span: a.span,
+                                })
+                            }
+                        }
+                    }
+                }
                 if self.consts.contains_key(&a.name.name) {
                     return Err(CheckError {
                         message: format!("不能给 const `{}` 赋值", a.name.name),
@@ -233,6 +270,8 @@ pub(crate) fn stmt_returns(s: &Stmt) -> bool {
                 None => false,
             }
         }
+        // 现代化：函数体末尾无分号表达式视为隐式 return
+        Stmt::Expr(e) => e.implicit_return,
         _ => false,
     }
 }

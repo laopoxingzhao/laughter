@@ -11,6 +11,91 @@
 use super::*;
 
 impl<'m> Vm<'m> {
+    /// 通过指针读取：nil 报错；Local 帧仍在则读栈槽；ArrayEl 读数组。
+    fn deref_read(&self, p: &Value, line: u32) -> Result<Value, VmError> {
+        use crate::runtime::value::Ptr;
+        let Value::Ptr(p) = p else {
+            return Err(VmError {
+                message: format!("`*` 需要指针，实际是 {}", p.type_name()),
+                line,
+            });
+        };
+        match p {
+            Ptr::Nil => Err(VmError {
+                message: "解引用空指针".into(),
+                line,
+            }),
+            Ptr::Local { frame, slot } => {
+                if *frame >= self.frames.len() {
+                    return Err(VmError {
+                        message: "悬垂指针：函数帧已结束".into(),
+                        line,
+                    });
+                }
+                let base = self.frames[*frame].base;
+                self.stack.get(base + slot).cloned().ok_or_else(|| VmError {
+                    message: "指针槽无效".into(),
+                    line,
+                })
+            }
+            Ptr::ArrayEl { arr, index } => {
+                let b = arr.borrow();
+                if *index < 0 || *index as usize >= b.len() {
+                    return Err(VmError {
+                        message: format!("指针下标 {index} 越界"),
+                        line,
+                    });
+                }
+                Ok(b[*index as usize].clone())
+            }
+        }
+    }
+
+    /// 通过指针写入。
+    fn deref_write(&mut self, p: &Value, val: Value, line: u32) -> Result<(), VmError> {
+        use crate::runtime::value::Ptr;
+        let Value::Ptr(p) = p else {
+            return Err(VmError {
+                message: format!("解引用赋值需要指针，实际是 {}", p.type_name()),
+                line,
+            });
+        };
+        match p {
+            Ptr::Nil => Err(VmError {
+                message: "解引用空指针（写）".into(),
+                line,
+            }),
+            Ptr::Local { frame, slot } => {
+                if *frame >= self.frames.len() {
+                    return Err(VmError {
+                        message: "悬垂指针：函数帧已结束".into(),
+                        line,
+                    });
+                }
+                let base = self.frames[*frame].base;
+                let addr = base + slot;
+                if addr >= self.stack.len() {
+                    return Err(VmError {
+                        message: "指针槽无效".into(),
+                        line,
+                    });
+                }
+                self.stack[addr] = val;
+                Ok(())
+            }
+            Ptr::ArrayEl { arr, index } => {
+                let mut b = arr.borrow_mut();
+                if *index < 0 || *index as usize >= b.len() {
+                    return Err(VmError {
+                        message: format!("指针下标 {index} 越界"),
+                        line,
+                    });
+                }
+                b[*index as usize] = val;
+                Ok(())
+            }
+        }
+    }
     pub(crate) fn loop_run(&mut self, out: &mut Vec<String>) -> Result<Vec<String>, VmError> {
         loop {
             // 步骤1：没有帧 = 主程序已返回
@@ -526,6 +611,61 @@ impl<'m> Vm<'m> {
                     self.stack.push(Value::Str(Rc::from(s.as_str())));
                     self.frames.last_mut().unwrap().ip = ip + 1;
                 }
+                Op::Nil => {
+                    self.stack.push(Value::Ptr(crate::runtime::value::Ptr::Nil));
+                    self.frames.last_mut().unwrap().ip = ip + 1;
+                }
+                Op::RefLocal | Op::RefMutLocal => {
+                    let slot = self.u16(ip + 1)? as usize;
+                    let frame_idx = self.frames.len() - 1;
+                    self.stack
+                        .push(Value::Ptr(crate::runtime::value::Ptr::Local {
+                            frame: frame_idx,
+                            slot,
+                        }));
+                    self.frames.last_mut().unwrap().ip = ip + 3;
+                }
+                Op::DerefRead => {
+                    let p = self.pop(line)?;
+                    let v = self.deref_read(&p, line)?;
+                    self.stack.push(v);
+                    self.frames.last_mut().unwrap().ip = ip + 1;
+                }
+                Op::DerefWrite => {
+                    let val = self.pop(line)?;
+                    let p = self.pop(line)?;
+                    self.deref_write(&p, val, line)?;
+                    self.frames.last_mut().unwrap().ip = ip + 1;
+                }
+                Op::PtrEq => {
+                    let b = self.pop(line)?;
+                    let a = self.pop(line)?;
+                    let eq = match (&a, &b) {
+                        (Value::Ptr(p), Value::Ptr(q)) => match (p, q) {
+                            (crate::runtime::value::Ptr::Nil, crate::runtime::value::Ptr::Nil) => {
+                                true
+                            }
+                            (
+                                crate::runtime::value::Ptr::Local {
+                                    frame: f1,
+                                    slot: s1,
+                                },
+                                crate::runtime::value::Ptr::Local {
+                                    frame: f2,
+                                    slot: s2,
+                                },
+                            ) => f1 == f2 && s1 == s2,
+                            (
+                                crate::runtime::value::Ptr::ArrayEl { index: i1, .. },
+                                crate::runtime::value::Ptr::ArrayEl { index: i2, .. },
+                            ) => i1 == i2,
+                            _ => false,
+                        },
+                        _ => false,
+                    };
+                    self.stack.push(Value::Bool(eq));
+                    self.frames.last_mut().unwrap().ip = ip + 1;
+                }
             }
         }
     }
@@ -596,11 +736,27 @@ fn arith(op: Op, a: Value, b: Value, line: u32) -> Result<Value, VmError> {
 }
 
 fn val_eq(a: &Value, b: &Value, line: u32) -> Result<bool, VmError> {
+    use crate::runtime::value::Ptr;
     Ok(match (a, b) {
         (Value::Int(x), Value::Int(y)) => x == y,
         (Value::Float(x), Value::Float(y)) => x == y,
         (Value::Bool(x), Value::Bool(y)) => x == y,
         (Value::Str(x), Value::Str(y)) => x == y,
+        (Value::Ptr(p), Value::Ptr(q)) => match (p, q) {
+            (Ptr::Nil, Ptr::Nil) => true,
+            (
+                Ptr::Local {
+                    frame: f1,
+                    slot: s1,
+                },
+                Ptr::Local {
+                    frame: f2,
+                    slot: s2,
+                },
+            ) => f1 == f2 && s1 == s2,
+            (Ptr::ArrayEl { index: i1, .. }, Ptr::ArrayEl { index: i2, .. }) => i1 == i2,
+            _ => false,
+        },
         _ => {
             return Err(VmError {
                 message: format!("无法比较 {} 与 {}", a.type_name(), b.type_name()),

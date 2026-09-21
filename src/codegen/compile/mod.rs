@@ -187,7 +187,19 @@ impl Compiler {
         // 步骤4：编译每个函数体；末尾补 Return 兜底
         for (i, f) in decls.iter().enumerate() {
             cx.cur = i;
-            for st in &f.body.stmts {
+            let non_void = !f.ret.is_void();
+            for (si, st) in f.body.stmts.iter().enumerate() {
+                let last = si + 1 == f.body.stmts.len();
+                // 现代化：函数体最后一条无分号表达式 → 隐式 return
+                if last && non_void {
+                    if let Stmt::Expr(e) = st {
+                        if e.implicit_return {
+                            cx.expr(&e.expr)?;
+                            cx.chunk().emit(Op::Return, e.span.line);
+                            continue;
+                        }
+                    }
+                }
                 cx.stmt(st)?;
             }
             cx.chunk().emit(Op::Return, f.body.span.line);

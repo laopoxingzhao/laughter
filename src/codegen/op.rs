@@ -60,7 +60,6 @@ pub enum Op {
     JumpIfTrue,
     Loop,
     Call,
-    CallMethod,
     Return,
     NewArray,
     GetIndex,
@@ -76,12 +75,26 @@ pub enum Op {
     StrAt,
     StrSub,
     ToString,
+    /// 方法调用
+    CallMethod,
+    /// nil 空指针
+    Nil,
+    /// 局部变量地址（u16 槽号）
+    RefLocal,
+    /// 可变局部变量地址（u16 槽号）
+    RefMutLocal,
+    /// 解引用读
+    DerefRead,
+    /// 解引用写 [ptr, value]
+    DerefWrite,
+    /// 指针相等
+    PtrEq,
 }
 
 impl Op {
     pub fn from_u8(b: u8) -> Option<Op> {
         // safety: contiguous enum starting at 0
-        const MAX: u8 = Op::ToString as u8;
+        const MAX: u8 = Op::PtrEq as u8;
         if b <= MAX {
             Some(unsafe { std::mem::transmute(b) })
         } else {
@@ -103,7 +116,9 @@ impl Op {
             | Op::CallMethod
             | Op::NewArray
             | Op::GetField
-            | Op::SetField => 3,
+            | Op::SetField
+            | Op::RefLocal
+            | Op::RefMutLocal => 3,
             Op::SetLocalField | Op::NewStruct => 5,
             _ => 1,
         }

@@ -45,6 +45,17 @@ impl StructVal {
     }
 }
 
+/// 指针/引用：教学版安全引用，可空。
+#[derive(Debug, Clone)]
+pub enum Ptr {
+    /// 空指针（`nil`）
+    Nil,
+    /// 指向某一调用帧内的局部槽（frame 为 frames 栈下标）
+    Local { frame: usize, slot: usize },
+    /// 指向数组元素
+    ArrayEl { arr: ArrayHandle, index: i64 },
+}
+
 /// 栈上运行时的一个值。`display()` 的结果就是 `print` 打出来的内容。
 ///
 /// | 变体 | 中文 | 语义 |
@@ -55,6 +66,7 @@ impl StructVal {
 /// | `Str(Rc<str>)` | 字符串 | 共享只读数据 |
 /// | `Array(Rc<RefCell<Vec<..>>>)` | 数组 | **引用**：多个变量可改同一数组 |
 /// | `Struct(StructVal)` | 结构体 | **值**：赋值时字段拷贝 |
+/// | `Ptr(Ptr)` | 指针 | `&` / `&mut` / `nil` |
 #[derive(Debug, Clone)]
 pub enum Value {
     /// 整数
@@ -69,6 +81,8 @@ pub enum Value {
     Array(ArrayHandle),
     /// 结构体值（复印件）
     Struct(StructVal),
+    /// 指针/引用
+    Ptr(Ptr),
 }
 
 impl Value {
@@ -80,6 +94,7 @@ impl Value {
             Value::Str(_) => "string",
             Value::Array(_) => "array",
             Value::Struct(_) => "struct",
+            Value::Ptr(_) => "ptr",
         }
     }
 
@@ -108,6 +123,11 @@ impl Value {
                     .collect();
                 format!("{} {{ {} }}", s.name, items.join(", "))
             }
+            Value::Ptr(p) => match p {
+                Ptr::Nil => "nil".to_string(),
+                Ptr::Local { frame, slot } => format!("<&local {frame}:{slot}>"),
+                Ptr::ArrayEl { index, .. } => format!("<&array[{index}]>"),
+            },
         }
     }
 }

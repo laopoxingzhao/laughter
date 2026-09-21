@@ -1,0 +1,16 @@
+// 指针（安全引用）：&T / &mut T / nil / *
+fn main() -> void {
+    let x = 1;
+    let r: &int = &x;
+    print(*r);          // 1
+    let m: &mut int = &mut x;
+    *m = 42;
+    print(x);           // 42
+    print(*r);          // 42（r 与 m 指向同一变量）
+
+    let p: &int = nil;
+    print(p == nil);    // true
+
+    let a: int[] = [10, 20];
+    print(a[0]);
+}
