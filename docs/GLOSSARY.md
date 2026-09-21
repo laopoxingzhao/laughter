@@ -1,5 +1,7 @@
 # 术语表（英文 ↔ 中文）
 
+> **本文档由 MiMo（小米 AI 助手）撰写**。署名见 [AUTHORS.md](AUTHORS.md)。
+
 代码与反汇编里常出现英文。本表按「场景」给出中文含义。  
 语言规则见 [LANGUAGE.md](LANGUAGE.md)；编译过程见 [COMPILE_PRIMER.md](COMPILE_PRIMER.md)。
 
@@ -10,20 +12,16 @@
 | 英文 | 中文 |
 |------|------|
 | Lexer / Tokenizer | 词法分析器（切词） |
-| Token | 词法单元（一个「词」） |
-| Parser | 语法分析器（组装成语法树） |
-| AST (Abstract Syntax Tree) | 抽象语法树 |
-| Sema / Checker / Type checker | 语义/类型检查器 |
-| Compiler / Codegen | 编译器 / 代码生成 |
-| Bytecode | 字节码（给虚拟机的指令） |
-| VM (Virtual Machine) | 虚拟机 |
-| Interpreter | 解释器（逐步执行） |
-| Frontend | 前端（词法+语法+语义） |
-| Backend | 后端（生成字节码/机器码等） |
-| Desugar | 脱糖（把语法糖改写成基础形式） |
-| Scope | 作用域 |
-| Span | 源位置（行列） |
-| Diagnostic | 诊断（错误/警告信息） |
+| Parser | 语法分析器 |
+| AST | 抽象语法树 |
+| Checker / Type checker | 类型检查器 |
+| Bytecode / VM | 字节码 / 虚拟机 |
+| Reference / Pointer | 引用 / 指针 |
+| Deref | 解引用 `*p` |
+| nil / null | 空引用 |
+| &mut | 可变引用 |
+| String interpolation | 字符串插值 `s"..."` |
+| Implicit return | 函数末尾表达式隐式返回 |
 
 ---
 

@@ -1,5 +1,7 @@
 # 快速开始
 
+> **本文档由 MiMo（小米 AI 助手）撰写**，面向未接触过编译器的同学。署名见 [AUTHORS.md](AUTHORS.md)。
+
 目标：10 分钟内在你的电脑上跑起来 Laughter。
 
 ## 1. 你需要什么
@@ -92,6 +94,8 @@ cargo run -- run hello_main.lg
 | `examples/methods_range.lg` | 方法、范围循环、break/continue |
 | `examples/zca.lg` | 常量折叠与「值语义」结构体 |
 | `examples/mod_main.lg` + `mod_math.lg` | 多文件 import |
+| `examples/pointers.lg` | 指针 `&` / `&mut` / `nil` |
+| `examples/modern.lg` | `fn`、字符串插值、结构体简写、隐式 return |
 
 ## 6. 出错时怎么看
 

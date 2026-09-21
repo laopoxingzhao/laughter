@@ -1,5 +1,7 @@
 # Laughter 语言手册
 
+> **本文档由 MiMo（小米 AI 助手）撰写整理**，权威语义以本文件 + 代码测试为准。署名见 [AUTHORS.md](AUTHORS.md)。
+
 面向初学者的完整语言说明。想先跑起来请看 [GETTING_STARTED.md](GETTING_STARTED.md)；  
 想理解「为什么这样设计、代码如何执行」请看 [COMPILE_PRIMER.md](COMPILE_PRIMER.md)。
 

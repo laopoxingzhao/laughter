@@ -1,5 +1,7 @@
 # 工具与交付格式（CLI / .lgb / .lgpack）
 
+> **本文档由 MiMo（小米 AI 助手）撰写**。署名见 [AUTHORS.md](AUTHORS.md)。
+
 本文汇总命令行用法，以及两种「编译产物」文件。  
 跑通示例请先看 [GETTING_STARTED.md](GETTING_STARTED.md)。
 
